@@ -3,7 +3,7 @@ import gspread
 import pandas as pd
 import uuid
 from datetime import date, time
-import time as t 
+import time as t # Usando 't' para time.sleep()
 
 # --- CONFIGURAÇÕES DO PROJETO ---
 
@@ -11,24 +11,37 @@ import time as t
 PLANILHA_ID = "1S54b0QtWYaCAgrDNpdQM7ZG5f_KbYXpDztK5TSOn2vU"
 ABA_NOME = "AGENDA"
 
-# --- CONFIGURAÇÃO DA GOVERNANÇA (Conexão Segura via Streamlit Secrets) ---
+# --- CONFIGURAÇÃO DA GOVERNANÇA (Conexão Segura e Resiliente) ---
 
 @st.cache_resource
 def conectar_sheets():
-    """Tenta conectar ao Google Sheets usando Streamlit Secrets (Recomendado para Cloud)."""
-    try:
-        gc = gspread.service_account_from_dict(st.secrets["gspread"])
+    """Tenta conectar ao Google Sheets usando Streamlit Secrets com lógica de Retentativa."""
+    MAX_RETRIES = 3
+    
+    # Inicia a lógica de retry
+    for attempt in range(MAX_RETRIES):
+        try:
+            gc = gspread.service_account_from_dict(st.secrets["gspread"])
+            
+            spreadsheet = gc.open_by_key(PLANILHA_ID)
+            sheet = spreadsheet.worksheet(ABA_NOME)
+            
+            st.sidebar.success("✅ Conexão com Google Sheets estabelecida.")
+            return sheet
         
-        spreadsheet = gc.open_by_key(PLANILHA_ID)
-        sheet = spreadsheet.worksheet(ABA_NOME)
-        
-        st.sidebar.success("✅ Conexão com Google Sheets estabelecida.")
-        return sheet
-    except KeyError:
-        st.error("🚨 Secrets do 'gspread' não configurados. Por favor, adicione as chaves no Streamlit Cloud.")
-    except Exception as e:
-        st.error(f"🚨 Erro ao conectar ou acessar o Sheets. Verifique o compartilhamento com a Service Account. Erro: {e}")
+        except Exception as e:
+            # Se não for a última tentativa, espera e tenta novamente
+            if attempt < MAX_RETRIES - 1:
+                # Exponential Backoff: 1s, 2s, 4s...
+                wait_time = 2 ** attempt
+                st.sidebar.warning(f"⚠️ Falha de conexão momentânea (Tentativa {attempt + 1}/{MAX_RETRIES}). Retentando em {wait_time}s...")
+                t.sleep(wait_time) 
+            else:
+                # Última tentativa falhou, registra o erro fatal
+                st.error(f"🚨 Erro fatal ao conectar após {MAX_RETRIES} tentativas. Verifique as permissões. Erro: {e}")
+                return None
     return None
+
 
 # --- FUNÇÕES CORE DO CRUD ---
 
@@ -36,16 +49,14 @@ def conectar_sheets():
 def carregar_eventos(sheet):
     """Lê todos os registros (ignorando o cabeçalho) e retorna como DataFrame."""
     
-    # 📌 CORREÇÃO FINAL (A mais robusta): Evita AttributeError se a reconexão falhar
+    # Defende contra sheet=None, o causador do AttributeError
     if sheet is None:
-         # st.warning("Aguardando conexão estável para carregar dados...")
          return pd.DataFrame()
          
     try:
         dados = sheet.get_all_records()
         return pd.DataFrame(dados)
     except Exception as e:
-        # st.warning(f"Não foi possível carregar os dados. Erro: {e}")
         return pd.DataFrame()
 
 # C (Create) - Adiciona um novo evento
@@ -120,7 +131,7 @@ st.title("🗓️ Agenda Sarcástica v1.0 (Python/Sheets)")
 
 sheet = conectar_sheets()
 
-# Se a conexão inicial falhar, o script para. Se falhar após o rerun, a nova lógica entra.
+# Se a conexão inicial falhar, o script para. 
 if sheet is None:
     st.stop()
 
@@ -163,9 +174,8 @@ with tab_criar:
                 }
                 adicionar_evento(sheet, dados_para_sheet)
                 
-                conectar_sheets.clear()
-                
-                t.sleep(1) # Mantido por garantia na escrita
+                # A lógica de retry agora garante a reconexão.
+                conectar_sheets.clear() 
                 
                 st.experimental_rerun()
             else:
@@ -175,7 +185,7 @@ with tab_criar:
 # === ABA VISUALIZAR E GERENCIAR (R, U, D) ===
 with tab_visualizar_editar:
     st.header("Seus Eventos Atuais (CRUD)")
-    df_eventos = carregar_eventos(sheet) # Se sheet for None aqui, a função retorna df vazio
+    df_eventos = carregar_eventos(sheet) 
     
     if df_eventos.empty:
         st.info("Nenhum evento na agenda. Você está de férias ou está procrastinando?")
@@ -270,7 +280,5 @@ with tab_visualizar_editar:
                     if deletar_evento(sheet, evento_selecionado_id):
                         
                         conectar_sheets.clear()
-                        
-                        t.sleep(1) # Mantido por garantia na exclusão
                         
                         st.experimental_rerun()
