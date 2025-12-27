@@ -16,10 +16,9 @@ ABA_NOME = "AGENDA"
 def conectar_sheets():
     """Tenta conectar ao Google Sheets usando Streamlit Secrets (Recomendado para Cloud)."""
     try:
-        # A forma Limpa: Usa o gspread para criar o cliente diretamente do dicionário
+        # Usa o gspread para criar o cliente diretamente do dicionário de segredos
         gc = gspread.service_account_from_dict(st.secrets["gspread"])
         
-        # Abre a planilha pela ID e a aba pelo nome
         spreadsheet = gc.open_by_key(PLANILHA_ID)
         sheet = spreadsheet.worksheet(ABA_NOME)
         
@@ -47,7 +46,6 @@ def carregar_eventos(sheet):
 def adicionar_evento(sheet, dados_do_form):
     """Insere uma nova linha de evento no Sheets."""
     
-    # Lista de valores na ordem exata das colunas do Sheets
     nova_linha = [
         dados_do_form.get('id_evento'),
         dados_do_form.get('titulo'),
@@ -116,7 +114,6 @@ st.title("🗓️ Agenda Sarcástica v1.0 (Python/Sheets)")
 
 sheet = conectar_sheets()
 
-# Se a conexão falhar, o Streamlit para aqui
 if sheet is None:
     st.stop()
 
@@ -134,7 +131,6 @@ with tab_criar:
         with col1:
             titulo = st.text_input("Título Principal (Exato!)", max_chars=100)
             local = st.text_input("Local ou Link da Reunião:")
-            # 📌 CORRIGIDO: Adicionado format="DD/MM/YYYY" para exibição BR
             data = st.date_input("Data:", date.today(), format="DD/MM/YYYY") 
         
         with col2:
@@ -148,18 +144,21 @@ with tab_criar:
 
         if submit_button:
             if titulo and data: 
-                # Salva a data no formato ISO 8601 (YYYY-MM-DD) para consistência do DB (Sheets)
                 dados_para_sheet = {
                     'id_evento': str(uuid.uuid4()),
                     'titulo': titulo,
                     'descricao': descricao,
-                    'data_evento': data.strftime('%Y-%m-%d'), # Formato de Salvamento (ISO)
+                    'data_evento': data.strftime('%Y-%m-%d'), 
                     'hora_evento': hora.strftime('%H:%M'),
                     'local': local,
                     'prioridade': prioridade,
                     'status': status_inicial
                 }
                 adicionar_evento(sheet, dados_para_sheet)
+                
+                # 📌 CORREÇÃO: Limpa o cache após a escrita para forçar nova conexão/leitura
+                conectar_sheets.clear()
+                
                 st.experimental_rerun()
             else:
                 st.warning("O Título e a Data são obrigatórios. Não complique.")
@@ -174,14 +173,11 @@ with tab_visualizar_editar:
         st.info("Nenhum evento na agenda. Você está de férias ou está procrastinando?")
     else:
         
-        # 📌 CORRIGIDO: Formatação para exibição no padrão brasileiro (DD/MM/AAAA)
         df_display = df_eventos.copy()
         
         if 'data_evento' in df_display.columns:
-            # Converte a coluna para datetime e depois formata para DD/MM/AAAA
             df_display['data_evento'] = pd.to_datetime(df_display['data_evento'], errors='coerce').dt.strftime('%d/%m/%Y')
         
-        # Opcional: Renomear colunas para melhor leitura em português
         df_display.rename(columns={
             'id_evento': 'ID', 
             'titulo': 'Título', 
@@ -193,7 +189,6 @@ with tab_visualizar_editar:
             'status': 'Status'
         }, inplace=True)
         
-        # Exibe os dados formatados
         st.dataframe(df_display.sort_values(by='Data', ascending=False), use_container_width=True, hide_index=True)
         
         st.divider()
@@ -230,7 +225,7 @@ with tab_visualizar_editar:
                         novo_data = st.date_input(
                             "Data", 
                             value=pd.to_datetime(evento_dados['data_evento']).date(),
-                            format="DD/MM/YYYY" # 📌 CORRIGIDO: Formato BR
+                            format="DD/MM/YYYY"
                         )
                         novo_hora_str = evento_dados['hora_evento']
                         novo_hora = st.time_input("Hora", value=time(int(novo_hora_str[:2]), int(novo_hora_str[3:])))
@@ -243,18 +238,21 @@ with tab_visualizar_editar:
                     update_button = st.form_submit_button("Salvar Atualizações (Update)")
 
                     if update_button:
-                        # Salva a data no formato ISO 8601 (YYYY-MM-DD) para o Sheets
                         dados_atualizados = {
                             'id_evento': evento_selecionado_id, 
                             'titulo': novo_titulo,
                             'descricao': nova_descricao,
-                            'data_evento': novo_data.strftime('%Y-%m-%d'), # Formato de Salvamento (ISO)
+                            'data_evento': novo_data.strftime('%Y-%m-%d'),
                             'hora_evento': novo_hora.strftime('%H:%M'),
                             'local': novo_local,
                             'prioridade': novo_prioridade,
                             'status': novo_status
                         }
                         if atualizar_evento(sheet, evento_selecionado_id, dados_atualizados):
+                            
+                            # 📌 CORREÇÃO: Limpa o cache após o Update para forçar nova conexão/leitura
+                            conectar_sheets.clear()
+                            
                             st.experimental_rerun()
             
             with col_d:
@@ -263,4 +261,8 @@ with tab_visualizar_editar:
                 
                 if st.button("🔴 EXCLUIR EVENTO (Delete)", type="primary"):
                     if deletar_evento(sheet, evento_selecionado_id):
+                        
+                        # 📌 CORREÇÃO: Limpa o cache após o Delete para forçar nova conexão/leitura
+                        conectar_sheets.clear()
+                        
                         st.experimental_rerun()
