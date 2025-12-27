@@ -14,6 +14,7 @@ TELEGRAM_BOT_TOKEN = os.getenv("TELEGRAM_BOT_TOKEN")
 TELEGRAM_CHAT_ID = os.getenv("TELEGRAM_CHAT_ID")
 
 # ID da Planilha no seu Google Drive (Use o mesmo do app.py)
+# Mantenho o ID de exemplo, mas use o seu ID real
 PLANILHA_ID = "1S54b0QtWYaCAgrDNpdQM7ZG5f_KbYXpDztK5TSOn2vU"
 ABA_NOME = "AGENDA"
 
@@ -65,13 +66,13 @@ async def enviar_alerta(mensagem):
         await bot.send_message(
             chat_id=TELEGRAM_CHAT_ID, 
             text=mensagem, 
-            parse_mode='Markdown'
+            parse_mode='Markdown' # Usa Markdown para negrito, etc.
         )
         print("🎉 Alerta enviado com sucesso para o Telegram!")
     except Exception as e:
         print(f"🚨 Erro ao enviar mensagem para o Telegram: {e}")
 
-# --- LÓGICA DO AGENTE DE ALERTA (Com Ajustes) ---
+# --- LÓGICA DO AGENTE DE ALERTA ---
 
 def main_alerta():
     """Função principal que executa a lógica de alerta e notificação."""
@@ -86,7 +87,8 @@ def main_alerta():
     # 📌 NOVO ALERTA 1: SEM REGISTRO DE EVENTOS (Planilha vazia)
     if df_eventos.empty:
         print("Nenhum evento encontrado na planilha.")
-        mensagem_vazia = "⚠️ *RELATÓRIO DE STATUS*\n\nNão foi encontrado nenhum registro de evento na planilha AGENDA. Confirme se os dados foram inseridos corretamente."
+        # Frase solicitada: "OLÁ! NÃO HÁ EVENTOS REGISTRADOS!"
+        mensagem_vazia = "OLÁ! NÃO HÁ EVENTOS REGISTRADOS!"
         asyncio.run(enviar_alerta(mensagem_vazia))
         return
 
@@ -107,7 +109,7 @@ def main_alerta():
     
     mensagens = []
     
-    # ALERTA 1: ALTA PRIORIDADE PENDENTE
+    # ALERTA 1: ALTA PRIORIDADE PENDENTE (Mensagem de Alerta)
     if not df_alta_pendente.empty:
         msg_alta = "🚨 *PRIORIDADE ALTA PENDENTE* 🚨\n"
         for index, row in df_alta_pendente.head(3).iterrows():
@@ -119,7 +121,7 @@ def main_alerta():
         mensagens.append(msg_alta)
 
 
-    # ALERTA 2: EVENTOS DE AMANHÃ
+    # ALERTA 2: EVENTOS DE AMANHÃ (Mensagem de Alerta)
     if not df_amanha.empty:
         msg_amanha = "🗓️ *AGENDA DE AMANHÃ* 🗓️\n"
         for index, row in df_amanha.iterrows():
@@ -134,7 +136,8 @@ def main_alerta():
     else:
         # 📌 NOVO ALERTA 2: SEM EVENTOS URGENTES (Planilha com dados, mas filtros vazios)
         print("Nenhum alerta de alta prioridade ou evento para amanhã. Tudo sob controle.")
-        mensagem_nada_consta = "✅ *RELATÓRIO DE STATUS: TUDO CERTO!* ✅\n\nNenhum evento urgente (Prioridade Alta ou Agenda de Amanhã) foi encontrado. Seus dados estão sob controle."
+        # Frase solicitada: "OLÁ! NÃO HÁ EVENTOS URGENTES!"
+        mensagem_nada_consta = "OLÁ! NÃO HÁ EVENTOS URGENTES!"
         asyncio.run(enviar_alerta(mensagem_nada_consta))
 
 
