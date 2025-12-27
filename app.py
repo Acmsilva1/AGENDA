@@ -182,17 +182,12 @@ with tab_criar:
 # === ABA VISUALIZAR E GERENCIAR (R, U, D) ===
 with tab_visualizar_editar:
     
-    # 📌 BOTÃO OCULTO PARA EVITAR O BUG DO STREAMLIT CLOUD
-    # if st.button("🔄 Atualizar Dados", type="secondary"):
-    #     conectar_sheets.clear()
-    #     st.experimental_rerun()
+    # 🛑 BLOCO DO BOTÃO REMOVIDO COMPLETAMENTE
         
-    st.info("Para atualizar a lista após uma alteração, mude para a aba 'Criar Evento' e volte para cá.")
+    st.info("Para atualizar a lista após uma alteração, mude para a aba 'Criar Evento' e volte para cá (ou use F5).")
     st.header("Seus Eventos Atuais (CRUD)")
     df_eventos = carregar_eventos(sheet) 
     
-    # ... (o restante do código de visualização é o mesmo) ...
-
     if df_eventos.empty:
         st.info("Nenhum evento na agenda. Você está de férias ou está procrastinando?")
     else:
