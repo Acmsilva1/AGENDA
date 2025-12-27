@@ -75,8 +75,8 @@ def adicionar_evento(sheet, dados_do_form):
     ]
     
     sheet.append_row(nova_linha)
-    st.success("🎉 Evento criado. Mais um compromisso para a sua vida. **A lista será atualizada automaticamente em 10 segundos.**") 
-    conectar_sheets.clear() # Limpa o cache para garantir que a próxima leitura automática seja fresca.
+    st.success("🎉 Evento criado. Mais um compromisso para a sua vida. **TROQUE DE ABA ou atualize a página (F5) para ver a lista.**") 
+    conectar_sheets.clear()
 
 # U (Update) - Atualiza um evento existente
 def atualizar_evento(sheet, id_evento, novos_dados):
@@ -97,8 +97,8 @@ def atualizar_evento(sheet, id_evento, novos_dados):
         ]
 
         sheet.update(f'A{linha_index}', [valores_atualizados])
-        st.success(f"🔄 Evento {id_evento[:8]}... atualizado com sucesso. Foco nos detalhes. **A lista será atualizada automaticamente em 10 segundos.**") 
-        conectar_sheets.clear() # Limpa o cache para garantir que a próxima leitura automática seja fresca.
+        st.success(f"🔄 Evento {id_evento[:8]}... atualizado com sucesso. Foco nos detalhes. **TROQUE DE ABA ou atualize a página (F5) para ver a lista.**") 
+        conectar_sheets.clear()
         return True
 
     except gspread.exceptions.CellNotFound:
@@ -116,8 +116,8 @@ def deletar_evento(sheet, id_evento):
         linha_index = cell.row
 
         sheet.delete_rows(linha_index)
-        st.success(f"🗑️ Evento {id_evento[:8]}... deletado. Férias merecidas para esse compromisso. **A lista será atualizada automaticamente em 10 segundos.**") 
-        conectar_sheets.clear() # Limpa o cache para garantir que a próxima leitura automática seja fresca.
+        st.success(f"🗑️ Evento {id_evento[:8]}... deletado. Férias merecidas para esse compromisso. **TROQUE DE ABA ou atualize a página (F5) para ver a lista.**") 
+        conectar_sheets.clear()
         return True
     except gspread.exceptions.CellNotFound:
         st.error(f"🚫 ID de Evento '{id_evento[:8]}...' não encontrado. Impossível apagar algo que não existe.")
@@ -175,7 +175,7 @@ with tab_criar:
                     'status': status_inicial
                 }
                 adicionar_evento(sheet, dados_para_sheet)
-                # Removemos o rerun forçado aqui, pois a própria lista na aba de visualização vai se atualizar.
+                
             else:
                 st.warning("O Título e a Data são obrigatórios. Não complique.")
 
@@ -183,11 +183,8 @@ with tab_criar:
 # === ABA VISUALIZAR E GERENCIAR (R, U, D) ===
 with tab_visualizar_editar:
     
-    # 📌 NOVO CÓDIGO: POLLING A CADA 10 SEGUNDOS
-    # O Streamlit Cloud vai fazer o rerun a cada 10 segundos enquanto esta aba estiver visível/ativa.
-    # O valor 10000 é em milissegundos.
-    st.info("A lista abaixo está em modo *quase real-time* e se atualiza automaticamente a cada 10 segundos.")
-    st.rerun(interval=10000)
+    # 🛑 POLING/RERUN REMOVIDO PARA EVITAR BUGS DE SINTAXE/STREAMLIT CLOUD
+    st.info("Para atualizar a lista após uma alteração, mude para a aba 'Criar Evento' e volte para cá (ou use F5).")
     
     st.header("MEUS EVENTOS")
     
@@ -275,7 +272,7 @@ with tab_visualizar_editar:
                             'prioridade': novo_prioridade,
                             'status': novo_status
                         }
-                        atualizar_evento(sheet, evento_selecionado_id, dados_atualizados) # A função já limpa o cache e a lista se atualiza sozinha
+                        atualizar_evento(sheet, evento_selecionado_id, dados_atualizados)
                             
             
             with col_d:
@@ -283,4 +280,4 @@ with tab_visualizar_editar:
                 st.warning(f"Excluindo: **{evento_dados['titulo']}**")
                 
                 if st.button("🔴 EXCLUIR EVENTO (Delete)", type="primary"):
-                    deletar_evento(sheet, evento_selecionado_id) # A função já limpa o cache e a lista se atualiza sozinha
+                    deletar_evento(sheet, evento_selecionado_id)
