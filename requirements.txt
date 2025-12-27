@@ -2,5 +2,6 @@
 streamlit
 gspread
 pandas
-# 📌 Módulo para Polling
 streamlit-autorefresh
+# 📌 NOVO MÓDULO PARA TELEGRAM
+python-telegram-bot
