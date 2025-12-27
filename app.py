@@ -131,12 +131,10 @@ with tab_criar:
         with col1:
             titulo = st.text_input("Título Principal (Exato!)", max_chars=100)
             local = st.text_input("Local ou Link da Reunião:")
-            # Formato brasileiro
             data = st.date_input("Data:", date.today(), format="DD/MM/YYYY") 
         
         with col2:
             prioridade = st.selectbox("Prioridade:", ["Média", "Alta", "Baixa"])
-            # Função construtora time (importada de datetime)
             hora = st.time_input("Hora:", time(9, 0)) 
             status_inicial = st.selectbox("Status Inicial:", ['Pendente', 'Rascunho'])
         
@@ -150,7 +148,7 @@ with tab_criar:
                     'id_evento': str(uuid.uuid4()),
                     'titulo': titulo,
                     'descricao': descricao,
-                    'data_evento': data.strftime('%Y-%m-%d'), # Formato ISO para Sheets
+                    'data_evento': data.strftime('%Y-%m-%d'), 
                     'hora_evento': hora.strftime('%H:%M'),
                     'local': local,
                     'prioridade': prioridade,
@@ -160,8 +158,8 @@ with tab_criar:
                 
                 conectar_sheets.clear()
                 
-                # 📌 CORREÇÃO: Atraso para estabilidade após a escrita (C)
-                t.sleep(0.5) 
+                # 📌 CORREÇÃO: Aumenta o atraso para 1.0 segundo para maior estabilidade
+                t.sleep(1) 
                 
                 st.experimental_rerun()
             else:
@@ -256,6 +254,7 @@ with tab_visualizar_editar:
                             
                             conectar_sheets.clear()
                             
+                            # Atraso não necessário aqui, mas mantemos o padrão de limpeza de cache
                             st.experimental_rerun()
             
             with col_d:
@@ -267,7 +266,7 @@ with tab_visualizar_editar:
                         
                         conectar_sheets.clear()
                         
-                        # Atraso para estabilidade após a exclusão (D)
-                        t.sleep(0.5) 
+                        # 📌 CORREÇÃO: Aumenta o atraso para 1.0 segundo para maior estabilidade
+                        t.sleep(1) 
                         
                         st.experimental_rerun()
