@@ -2,13 +2,40 @@
 
 name: Alerta de Agenda Diário (Cron Job)
 
-# 1. GATILHO (CRON JOB)
+# 1. GATILHOS
 on:
+  # Agendamento Automático (CRON JOB)
   schedule:
     # Roda diariamente às 10h, 14h, 18h e 22h UTC (corresponde a 7h, 11h, 15h e 19h no Brasil/GMT-3)
     - cron: '0 10,14,18,22 * * *' 
 
-  # Permite que o fluxo seja acionado manualmente para testes
+  # 📌 ATIVAÇÃO MANUAL PARA TESTES
   workflow_dispatch: 
+  
+# --- TRABALHO DE EXECUÇÃO ---
+jobs:
+  run_alerta:
+    runs-on: ubuntu-latest
+    
+    steps:
+    # 1. Checkout do Código
+    - name: Checkout do Repositório
+      uses: actions/checkout@v4
 
-# ... (restante do arquivo permanece o mesmo) ...
+    # 2. Configura o Python
+    - name: Configura Python 3.11
+      uses: actions/setup-python@v5
+      with:
+        python-version: '3.11'
+    
+    # 3. Instala Dependências
+    - name: Instala Dependências
+      run: pip install -r requisitos.txt
+    
+    # 4. Executa o Script de Alerta (O Agente)
+    - name: Executa o Alerta
+      run: python alerta_eventos.py
+      env:
+        TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+        TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
+        GSPREAD_CREDENTIALS_JSON: ${{ secrets.GSPREAD_CREDENTIALS_JSON }}
