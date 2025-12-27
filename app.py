@@ -127,7 +127,6 @@ def deletar_evento(sheet, id_evento):
 # --- INTERFACE STREAMLIT (UI) ---
 
 st.set_page_config(layout="wide")
-# 📌 ALTERAÇÃO DO TÍTULO AQUI
 st.title("🗓️ AGENDA DE EVENTOS")
 
 sheet = conectar_sheets()
@@ -141,7 +140,8 @@ tab_criar, tab_visualizar_editar = st.tabs(["➕ Criar Evento", "👁️ Visuali
 
 # === ABA CRIAR ===
 with tab_criar:
-    st.header("Novo Evento: O Início da Sua Jornada")
+    # 📌 ALTERAÇÃO 1: Título da Aba "Criar Evento"
+    st.header("REGISTRAR NOVO EVENTO")
     
     with st.form("form_novo_evento", clear_on_submit=True):
         col1, col2 = st.columns(2)
@@ -184,11 +184,15 @@ with tab_criar:
 with tab_visualizar_editar:
     
     st.info("Para atualizar a lista após uma alteração, mude para a aba 'Criar Evento' e volte para cá (ou use F5).")
-    st.header("Seus Eventos Atuais (CRUD)")
+    
+    # 📌 ALTERAÇÃO 2: Título da Aba "Visualizar Eventos"
+    st.header("MEUS EVENTOS")
+    
     df_eventos = carregar_eventos(sheet) 
     
     if df_eventos.empty:
-        st.info("Nenhum evento na agenda. Você está de férias ou está procrastinando?")
+        # 📌 ALTERAÇÃO 3: Mensagem de Sem Registros
+        st.info("SEM REGISTROS")
     else:
         
         df_display = df_eventos.copy()
