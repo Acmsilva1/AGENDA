@@ -10,8 +10,7 @@ from streamlit_autorefresh import st_autorefresh
 
 # ID da Planilha no seu Google Drive
 PLANILHA_ID = "1S54b0QtWYaCAgrDNpdQM7ZG5f_KbYXpDztK5TSOn2vU"
-ABA_AGENDA = "AGENDA"
-ABA_ALARMES = "ALARMES_RECORRENTES" # Nova aba
+ABA_NOME = "AGENDA"
 
 # --- CONFIGURAÇÃO DA GOVERNANÇA (Conexão Segura e Resiliente) ---
 
@@ -20,165 +19,130 @@ def conectar_sheets():
     """Tenta conectar ao Google Sheets usando Streamlit Secrets com lógica de Retentativa."""
     MAX_RETRIES = 3
     
+    # Inicia a lógica de retry
     for attempt in range(MAX_RETRIES):
         try:
             gc = gspread.service_account_from_dict(st.secrets["gspread"])
             
             spreadsheet = gc.open_by_key(PLANILHA_ID)
+            sheet = spreadsheet.worksheet(ABA_NOME)
             
-            # Garante que ambas as sheets sejam acessíveis
-            sheet_agenda = spreadsheet.worksheet(ABA_AGENDA)
-            sheet_alarmes = spreadsheet.worksheet(ABA_ALARMES)
-
             st.sidebar.success("✅ Conexão com Google Sheets estabelecida.")
-            return spreadsheet
+            return sheet
         
         except Exception as e:
+            # Se não for a última tentativa, espera e tenta novamente
             if attempt < MAX_RETRIES - 1:
+                # Exponential Backoff
                 wait_time = 2 ** attempt
                 st.sidebar.warning(f"⚠️ Falha de conexão momentânea (Tentativa {attempt + 1}/{MAX_RETRIES}). Retentando em {wait_time}s...")
                 t.sleep(wait_time) 
             else:
-                st.error(f"🚨 Erro fatal ao conectar após {MAX_RETRIES} tentativas. Erro: {e}")
+                # Última tentativa falhou, registra o erro fatal
+                st.error(f"🚨 Erro fatal ao conectar após {MAX_RETRIES} tentativas. Verifique as permissões. Erro: {e}")
                 return None
     return None
 
-spreadsheet = conectar_sheets()
 
-if spreadsheet is None:
-    st.stop()
-    
-sheet_agenda = spreadsheet.worksheet(ABA_AGENDA)
-sheet_alarmes = spreadsheet.worksheet(ABA_ALARMES)
+# --- FUNÇÕES CORE DO CRUD ---
 
-
-# --- FUNÇÕES CORE DO CRUD (AGENDA) ---
-
+# R (Read) - Lê todos os eventos
 def carregar_eventos(sheet):
-    """Lê todos os registros da Agenda."""
+    """Lê todos os registros (ignorando o cabeçalho) e retorna como DataFrame."""
+    
+    # Defende contra sheet=None
+    if sheet is None:
+         return pd.DataFrame()
+         
     try:
         dados = sheet.get_all_records()
         return pd.DataFrame(dados)
     except Exception as e:
         return pd.DataFrame()
 
+# C (Create) - Adiciona um novo evento
 def adicionar_evento(sheet, dados_do_form):
-    """Insere uma nova linha de evento na Agenda."""
-    nova_linha = [dados_do_form.get(h, '') for h in sheet.row_values(1)]
+    """Insere uma nova linha de evento no Sheets."""
     
-    # Mapeia valores para a ordem correta da planilha
-    colunas_agenda = ['id_evento', 'titulo', 'descricao', 'data_evento', 'hora_evento', 'local', 'prioridade', 'status']
-    valores_para_sheet = [dados_do_form.get(col, '') for col in colunas_agenda]
+    nova_linha = [
+        dados_do_form.get('id_evento'),
+        dados_do_form.get('titulo'),
+        dados_do_form.get('descricao'),
+        dados_do_form.get('data_evento'),
+        dados_do_form.get('hora_evento'),
+        dados_do_form.get('local'),
+        dados_do_form.get('prioridade'),
+        dados_do_form.get('status')
+    ]
     
-    sheet.append_row(valores_para_sheet)
-    st.success("🎉 Evento criado. **A lista será atualizada automaticamente em 10 segundos.**") 
+    sheet.append_row(nova_linha)
+    st.success("🎉 Evento criado. Mais um compromisso para a sua vida. **A lista na outra aba será atualizada automaticamente em 10 segundos.**") 
     conectar_sheets.clear()
 
+# U (Update) - Atualiza um evento existente
 def atualizar_evento(sheet, id_evento, novos_dados):
-    """Atualiza um evento existente na Agenda."""
+    """Busca a linha pelo ID e atualiza os dados da linha."""
     try:
         cell = sheet.find(id_evento)
         linha_index = cell.row 
-        
-        colunas_agenda = ['id_evento', 'titulo', 'descricao', 'data_evento', 'hora_evento', 'local', 'prioridade', 'status']
-        valores_atualizados = [novos_dados.get(col, '') for col in colunas_agenda]
+
+        valores_atualizados = [
+            novos_dados['id_evento'],
+            novos_dados['titulo'],
+            novos_dados['descricao'],
+            novos_dados['data_evento'],
+            novos_dados['hora_evento'],
+            novos_dados['local'],
+            novos_dados['prioridade'],
+            novos_dados['status']
+        ]
 
         sheet.update(f'A{linha_index}', [valores_atualizados])
-        st.success(f"🔄 Evento {id_evento[:8]}... atualizado com sucesso. **A lista será atualizada automaticamente em 10 segundos.**") 
+        st.success(f"🔄 Evento {id_evento[:8]}... atualizado com sucesso. Foco nos detalhes. **A lista na outra aba será atualizada automaticamente em 10 segundos.**") 
         conectar_sheets.clear()
         return True
 
     except gspread.exceptions.CellNotFound:
-        st.error(f"🚫 ID de Evento '{id_evento[:8]}...' não encontrado.")
+        st.error(f"🚫 ID de Evento '{id_evento[:8]}...' não encontrado. Algum erro na matriz.")
         return False
     except Exception as e:
         st.error(f"🚫 Erro ao atualizar o evento: {e}")
         return False
 
+# D (Delete) - Remove um evento
 def deletar_evento(sheet, id_evento):
-    """Remove um evento da Agenda."""
+    """Busca a linha pelo ID e a deleta."""
     try:
         cell = sheet.find(id_evento)
         linha_index = cell.row
 
         sheet.delete_rows(linha_index)
-        st.success(f"🗑️ Evento {id_evento[:8]}... deletado. **A lista será atualizada automaticamente em 10 segundos.**") 
+        st.success(f"🗑️ Evento {id_evento[:8]}... deletado. Férias merecidas para esse compromisso. **A lista na outra aba será atualizada automaticamente em 10 segundos.**") 
         conectar_sheets.clear()
         return True
+    except gspread.exceptions.CellNotFound:
+        st.error(f"🚫 ID de Evento '{id_evento[:8]}...' não encontrado. Impossível apagar algo que não existe.")
+        return False
     except Exception as e:
         st.error(f"🚫 Erro ao deletar o evento: {e}")
-        return False
-
-
-# --- FUNÇÕES CORE DO CRUD (ALARMES RECORRENTES) ---
-
-def carregar_alarmes(sheet):
-    """Lê todos os registros de Alarmes Recorrentes."""
-    try:
-        dados = sheet.get_all_records()
-        return pd.DataFrame(dados)
-    except Exception as e:
-        return pd.DataFrame()
-
-def adicionar_alarme(sheet, dados_do_form):
-    """Insere um novo alarme na planilha de Alarmes."""
-    
-    colunas_alarmes = ['id_alarme', 'TITULO', 'HORA_ALARME', 'DIAS_SEMANA', 'ATIVO']
-    valores_para_sheet = [dados_do_form.get(col, '') for col in colunas_alarmes]
-    
-    sheet.append_row(valores_para_sheet)
-    st.success("🔔 Novo Alarme Recorrente criado. ") 
-    conectar_sheets.clear()
-
-def atualizar_alarme(sheet, id_alarme, novos_dados):
-    """Atualiza um alarme recorrente existente."""
-    try:
-        cell = sheet.find(id_alarme)
-        linha_index = cell.row 
-        
-        colunas_alarmes = ['id_alarme', 'TITULO', 'HORA_ALARME', 'DIAS_SEMANA', 'ATIVO']
-        valores_atualizados = [novos_dados.get(col, '') for col in colunas_alarmes]
-
-        sheet.update(f'A{linha_index}', [valores_atualizados])
-        st.success(f"🔄 Alarme {id_alarme[:8]}... atualizado com sucesso.") 
-        conectar_sheets.clear()
-        return True
-    except Exception as e:
-        st.error(f"🚫 Erro ao atualizar o alarme: {e}")
-        return False
-
-def deletar_alarme(sheet, id_alarme):
-    """Remove um alarme recorrente."""
-    try:
-        cell = sheet.find(id_alarme)
-        linha_index = cell.row
-
-        sheet.delete_rows(linha_index)
-        st.success(f"🗑️ Alarme {id_alarme[:8]}... deletado.") 
-        conectar_sheets.clear()
-        return True
-    except Exception as e:
-        st.error(f"🚫 Erro ao deletar o alarme: {e}")
         return False
 
 
 # --- INTERFACE STREAMLIT (UI) ---
 
 st.set_page_config(layout="wide")
-st.title("🗓️ GESTÃO DE GOVERNANÇA E ROTINA")
+st.title("🗓️ AGENDA DE EVENTOS")
 
-# --- CONFIGURAÇÃO DE ABAS ---
-tab_criar, tab_visualizar_agenda, tab_alarmes_recorrentes = st.tabs([
-    "➕ Criar Evento (Agenda)", 
-    "👁️ Visualizar Agenda (CRUD)",
-    "⏰ Alarmes Recorrentes (CRUD)" # 📌 NOVA ABA
-])
+sheet = conectar_sheets()
 
-st_autorefresh(interval=10000, key="data_refresh_key")
+if sheet is None:
+    st.stop()
 
-# ==============================================================================
-# === ABA 1: CRIAR EVENTO (AGENDA) ===
-# ==============================================================================
+
+tab_criar, tab_visualizar_editar = st.tabs(["➕ Criar Evento", "👁️ Visualizar e Gerenciar"])
+
+
+# === ABA CRIAR ===
 with tab_criar:
     st.header("REGISTRAR NOVO EVENTO")
     
@@ -193,8 +157,7 @@ with tab_criar:
         with col2:
             prioridade = st.selectbox("Prioridade:", ["Média", "Alta", "Baixa"])
             hora = st.time_input("Hora:", time(9, 0)) 
-            # 📌 STATUS AJUSTADO: Apenas PENDENTE e CONCLUÍDO
-            status_inicial = st.selectbox("Status Inicial:", ['Pendente', 'Concluído'])
+            status_inicial = st.selectbox("Status Inicial:", ['Pendente', 'Rascunho'])
         
         descricao = st.text_area("Descrição Detalhada:")
         
@@ -212,32 +175,41 @@ with tab_criar:
                     'prioridade': prioridade,
                     'status': status_inicial
                 }
-                adicionar_evento(sheet_agenda, dados_para_sheet)
+                adicionar_evento(sheet, dados_para_sheet)
                 
             else:
                 st.warning("O Título e a Data são obrigatórios. Não complique.")
 
-# ==============================================================================
-# === ABA 2: VISUALIZAR E GERENCIAR (AGENDA CRUD) ===
-# ==============================================================================
-with tab_visualizar_agenda:
-    st.info("🔄 **ATUALIZAÇÃO AUTOMÁTICA** (A cada 10 segundos)")
-    st.header("MINHA AGENDA DE GOVERNANÇA")
+
+# === ABA VISUALIZAR E GERENCIAR (R, U, D) ===
+with tab_visualizar_editar:
     
-    df_eventos = carregar_eventos(sheet_agenda) 
+    st_autorefresh(interval=10000, key="data_refresh_key")
+    # 📌 ALTERAÇÃO DA FRASE AQUI
+    st.info("🔄 **ATUALIZAÇÃO AUTOMÁTICA** (A cada 10 segundos)")
+    
+    st.header("MEUS EVENTOS")
+    
+    df_eventos = carregar_eventos(sheet) 
     
     if df_eventos.empty:
-        st.info("SEM REGISTROS NA AGENDA")
+        st.info("SEM REGISTROS")
     else:
         
         df_display = df_eventos.copy()
+        
         if 'data_evento' in df_display.columns:
             df_display['data_evento'] = pd.to_datetime(df_display['data_evento'], errors='coerce').dt.strftime('%d/%m/%Y')
         
         df_display.rename(columns={
-            'id_evento': 'ID', 'titulo': 'Título', 'data_evento': 'Data',
-            'hora_evento': 'Hora', 'descricao': 'Descrição', 'local': 'Local', 
-            'prioridade': 'Prioridade', 'status': 'Status'
+            'id_evento': 'ID', 
+            'titulo': 'Título', 
+            'data_evento': 'Data',
+            'hora_evento': 'Hora',
+            'descricao': 'Descrição',
+            'local': 'Local',
+            'prioridade': 'Prioridade',
+            'status': 'Status'
         }, inplace=True)
         
         st.dataframe(df_display.sort_values(by='Data', ascending=False), use_container_width=True, hide_index=True)
@@ -246,6 +218,7 @@ with tab_visualizar_agenda:
         st.subheader("🛠️ Edição e Exclusão")
 
         if not df_eventos.empty:
+            
             eventos_atuais = df_eventos['id_evento'].tolist()
             
             def formatar_selecao(id_val):
@@ -253,7 +226,7 @@ with tab_visualizar_agenda:
                 return f"{titulo} ({id_val[:4]}...)"
 
             evento_selecionado_id = st.selectbox(
-                "Selecione o Evento para Ação:",
+                "Selecione o Evento para Ação (Edição/Exclusão):",
                 options=eventos_atuais,
                 index=0 if eventos_atuais else None,
                 format_func=formatar_selecao
@@ -285,21 +258,23 @@ with tab_visualizar_agenda:
                         novo_local = st.text_input("Local", value=evento_dados['local'])
                         opcoes_prioridade = ["Alta", "Média", "Baixa"]
                         novo_prioridade = st.selectbox("Prioridade", opcoes_prioridade, index=opcoes_prioridade.index(evento_dados['prioridade']))
-                        
-                        # 📌 STATUS AJUSTADO: Apenas PENDENTE e CONCLUÍDO
-                        opcoes_status = ['Pendente', 'Concluído']
-                        novo_status = st.selectbox("Status", opcoes_status, index=opcoes_status.index(evento_dados['status']) if evento_dados['status'] in opcoes_status else 0)
+                        opcoes_status = ['Pendente', 'Concluído', 'Cancelado']
+                        novo_status = st.selectbox("Status", opcoes_status, index=opcoes_status.index(evento_dados['status']))
 
                     update_button = st.form_submit_button("Salvar Atualizações (Update)")
 
                     if update_button:
                         dados_atualizados = {
-                            'id_evento': evento_selecionado_id, 'titulo': novo_titulo,
-                            'descricao': nova_descricao, 'data_evento': novo_data.strftime('%Y-%m-%d'),
-                            'hora_evento': novo_hora.strftime('%H:%M'), 'local': novo_local,
-                            'prioridade': novo_prioridade, 'status': novo_status
+                            'id_evento': evento_selecionado_id, 
+                            'titulo': novo_titulo,
+                            'descricao': nova_descricao,
+                            'data_evento': novo_data.strftime('%Y-%m-%d'),
+                            'hora_evento': novo_hora.strftime('%H:%M'),
+                            'local': novo_local,
+                            'prioridade': novo_prioridade,
+                            'status': novo_status
                         }
-                        atualizar_evento(sheet_agenda, evento_selecionado_id, dados_atualizados)
+                        atualizar_evento(sheet, evento_selecionado_id, dados_atualizados)
                             
             
             with col_d:
@@ -307,145 +282,4 @@ with tab_visualizar_agenda:
                 st.warning(f"Excluindo: **{evento_dados['titulo']}**")
                 
                 if st.button("🔴 EXCLUIR EVENTO (Delete)", type="primary"):
-                    deletar_evento(sheet_agenda, evento_selecionado_id)
-
-
-# ==============================================================================
-# === ABA 3: ALARMES RECORRENTES (CRUD) ===
-# ==============================================================================
-
-dias_semana_full = ['SEGUNDA', 'TERÇA', 'QUARTA', 'QUINTA', 'SEXTA', 'SÁBADO', 'DOMINGO']
-dias_semana_map = {d: d[:2].upper() for d in dias_semana_full}
-
-
-with tab_alarmes_recorrentes:
-    st.header("ALARME DE ROTINA (Treino, Medicamento, etc.)")
-    
-    st.markdown("---")
-    st.subheader("➕ Criar Novo Alarme")
-    
-    with st.form("form_novo_alarme", clear_on_submit=True):
-        
-        titulo_alarme = st.text_input("Título do Alarme (Ex: Tomar Vitamina)", max_chars=100)
-        
-        col_c1, col_c2 = st.columns([1, 2])
-        
-        with col_c1:
-            hora_alarme = st.time_input("Hora do Alarme", value=time(10, 0))
-            status_alarme = st.selectbox("Status", ['SIM', 'NÃO'], index=0)
-            
-        with col_c2:
-            dias_selecionados = st.multiselect(
-                "Dias da Semana para Recorrência (Deixe vazio para TODOS os dias):",
-                options=dias_semana_full
-            )
-        
-        submit_alarme = st.form_submit_button("Salvar Novo Alarme")
-        
-        if submit_alarme:
-            if titulo_alarme:
-                # Mapeia dias selecionados para abreviações (SE, TE, QA, etc.)
-                dias_formatados = [dias_semana_map[d] for d in dias_selecionados]
-                dias_string = "TODOS" if not dias_formatados else ", ".join(dias_formatados)
-                
-                novo_alarme = {
-                    'id_alarme': str(uuid.uuid4()),
-                    'TITULO': titulo_alarme,
-                    'HORA_ALARME': hora_alarme.strftime('%H:%M'),
-                    'DIAS_SEMANA': dias_string,
-                    'ATIVO': status_alarme
-                }
-                adicionar_alarme(sheet_alarmes, novo_alarme)
-            else:
-                st.warning("O Título do Alarme é obrigatório.")
-
-    
-    st.markdown("---")
-    st.subheader("👁️ Gerenciar Alarmes Existentes")
-    
-    df_alarmes = carregar_alarmes(sheet_alarmes)
-    
-    if df_alarmes.empty:
-        st.info("NENHUM ALARME RECORRENTE REGISTRADO.")
-    else:
-        
-        df_display_alarmes = df_alarmes.copy()
-        df_display_alarmes.rename(columns={
-            'id_alarme': 'ID', 'TITULO': 'Título', 
-            'HORA_ALARME': 'Hora', 'DIAS_SEMANA': 'Recorrência', 
-            'ATIVO': 'Ativo?'
-        }, inplace=True)
-        
-        st.dataframe(df_display_alarmes.drop(columns='ID', errors='ignore'), use_container_width=True, hide_index=True)
-
-        st.divider()
-
-        alarmes_atuais = df_alarmes['id_alarme'].tolist()
-            
-        def formatar_selecao_alarme(id_val):
-            titulo = df_alarmes[df_alarmes['id_alarme'] == id_val]['TITULO'].iloc[0]
-            return f"{titulo} ({id_val[:4]}...)"
-
-        alarme_selecionado_id = st.selectbox(
-            "Selecione o Alarme para Edição/Exclusão:",
-            options=alarmes_atuais,
-            index=0 if alarmes_atuais else None,
-            format_func=formatar_selecao_alarme
-        )
-
-        if alarme_selecionado_id:
-            alarme_dados = df_alarmes[df_alarmes['id_alarme'] == alarme_selecionado_id].iloc[0]
-            
-            col_u_alarme, col_d_alarme = st.columns([3, 1])
-
-            with col_u_alarme:
-                st.markdown("##### Atualizar Alarme Selecionado")
-                with st.form("form_update_alarme"):
-                    novo_titulo_alarme = st.text_input("Título", value=alarme_dados['TITULO'])
-                    
-                    col_update_1, col_update_2 = st.columns([1, 2])
-                    
-                    with col_update_1:
-                        # Hora
-                        hora_str = alarme_dados['HORA_ALARME']
-                        novo_hora_alarme = st.time_input("Hora", value=time(int(hora_str[:2]), int(hora_str[3:])))
-                        # Status
-                        novo_status_alarme = st.selectbox("Ativo?", ['SIM', 'NÃO'], index=0 if alarme_dados['ATIVO'].upper() == 'SIM' else 1)
-                    
-                    with col_update_2:
-                        # Dias da Semana (Faz o mapeamento reverso para exibir no multiselect)
-                        dias_atuais = alarme_dados['DIAS_SEMANA'].split(', ')
-                        dias_reversos = {v: k for k, v in dias_semana_map.items()} # {'SE': 'SEGUNDA'}
-                        
-                        dias_default = []
-                        if 'TODOS' in dias_atuais or len(dias_atuais) > 1:
-                            # Se for 'TODOS' ou múltiplos, mapeia para as strings completas
-                            dias_default = [dias_reversos[d.strip()] for d in dias_atuais if d.strip() in dias_reversos]
-                        
-                        novo_dias_selecionados = st.multiselect(
-                            "Dias da Semana para Recorrência:",
-                            options=dias_semana_full,
-                            default=dias_default
-                        )
-                        
-                    update_alarme_button = st.form_submit_button("Salvar Atualizações do Alarme")
-
-                    if update_alarme_button:
-                        dias_formatados = [dias_semana_map[d] for d in novo_dias_selecionados]
-                        dias_string = "TODOS" if not dias_formatados else ", ".join(dias_formatados)
-                        
-                        dados_atualizados_alarme = {
-                            'id_alarme': alarme_selecionado_id, 
-                            'TITULO': novo_titulo_alarme,
-                            'HORA_ALARME': novo_hora_alarme.strftime('%H:%M'),
-                            'DIAS_SEMANA': dias_string,
-                            'ATIVO': novo_status_alarme
-                        }
-                        atualizar_alarme(sheet_alarmes, alarme_selecionado_id, dados_atualizados_alarme)
-                        
-            with col_d_alarme:
-                st.markdown("##### Excluir Alarme")
-                st.warning(f"Excluindo: **{alarme_dados['TITULO']}**")
-                
-                if st.button("🔴 EXCLUIR ALARME (Delete)", type="primary"):
-                    deletar_alarme(sheet_alarmes, alarme_selecionado_id)
+                    deletar_evento(sheet, evento_selecionado_id)
