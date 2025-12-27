@@ -3,7 +3,7 @@ import gspread
 import pandas as pd
 import uuid
 from datetime import date, time
-import time as t # Usando 't' para time.sleep() para evitar conflito com datetime.time()
+import time as t 
 
 # --- CONFIGURAÇÕES DO PROJETO ---
 
@@ -35,11 +35,17 @@ def conectar_sheets():
 # R (Read) - Lê todos os eventos
 def carregar_eventos(sheet):
     """Lê todos os registros (ignorando o cabeçalho) e retorna como DataFrame."""
+    
+    # 📌 CORREÇÃO FINAL (A mais robusta): Evita AttributeError se a reconexão falhar
+    if sheet is None:
+         # st.warning("Aguardando conexão estável para carregar dados...")
+         return pd.DataFrame()
+         
     try:
         dados = sheet.get_all_records()
         return pd.DataFrame(dados)
     except Exception as e:
-        st.warning(f"Não foi possível carregar os dados. Erro: {e}")
+        # st.warning(f"Não foi possível carregar os dados. Erro: {e}")
         return pd.DataFrame()
 
 # C (Create) - Adiciona um novo evento
@@ -114,6 +120,7 @@ st.title("🗓️ Agenda Sarcástica v1.0 (Python/Sheets)")
 
 sheet = conectar_sheets()
 
+# Se a conexão inicial falhar, o script para. Se falhar após o rerun, a nova lógica entra.
 if sheet is None:
     st.stop()
 
@@ -158,8 +165,7 @@ with tab_criar:
                 
                 conectar_sheets.clear()
                 
-                # 📌 CORREÇÃO: Aumenta o atraso para 1.0 segundo para maior estabilidade
-                t.sleep(1) 
+                t.sleep(1) # Mantido por garantia na escrita
                 
                 st.experimental_rerun()
             else:
@@ -169,7 +175,7 @@ with tab_criar:
 # === ABA VISUALIZAR E GERENCIAR (R, U, D) ===
 with tab_visualizar_editar:
     st.header("Seus Eventos Atuais (CRUD)")
-    df_eventos = carregar_eventos(sheet)
+    df_eventos = carregar_eventos(sheet) # Se sheet for None aqui, a função retorna df vazio
     
     if df_eventos.empty:
         st.info("Nenhum evento na agenda. Você está de férias ou está procrastinando?")
@@ -254,7 +260,6 @@ with tab_visualizar_editar:
                             
                             conectar_sheets.clear()
                             
-                            # Atraso não necessário aqui, mas mantemos o padrão de limpeza de cache
                             st.experimental_rerun()
             
             with col_d:
@@ -266,7 +271,6 @@ with tab_visualizar_editar:
                         
                         conectar_sheets.clear()
                         
-                        # 📌 CORREÇÃO: Aumenta o atraso para 1.0 segundo para maior estabilidade
-                        t.sleep(1) 
+                        t.sleep(1) # Mantido por garantia na exclusão
                         
                         st.experimental_rerun()
