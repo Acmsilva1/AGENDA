@@ -4,7 +4,6 @@ import pandas as pd
 import uuid
 from datetime import date, time
 import time as t 
-# 📌 NOVA IMPORTAÇÃO
 from streamlit_autorefresh import st_autorefresh 
 
 # --- CONFIGURAÇÕES DO PROJETO ---
@@ -185,11 +184,9 @@ with tab_criar:
 # === ABA VISUALIZAR E GERENCIAR (R, U, D) ===
 with tab_visualizar_editar:
     
-    # 📌 CÓDIGO FINAL E ESTÁVEL PARA POLLING
-    # Intervalo de 10 segundos (10000 milissegundos). 
-    # st_autorefresh é um componente que resolve o problema do Streamlit.
     st_autorefresh(interval=10000, key="data_refresh_key")
-    st.info("A lista abaixo está em modo *quase real-time* e se atualiza automaticamente a cada 10 segundos.")
+    # 📌 ALTERAÇÃO DA FRASE AQUI
+    st.info("🔄 **ATUALIZAÇÃO AUTOMÁTICA** (A cada 10 segundos)")
     
     st.header("MEUS EVENTOS")
     
