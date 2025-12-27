@@ -4,29 +4,33 @@ import pandas as pd
 import uuid
 from datetime import date, time
 
-# --- CONFIGURAÇÕES E CREDENCIAIS (Governança) ---
+# --- CONFIGURAÇÕES DO PROJETO ---
 
-# ID da Planilha que você compartilhou
+# ID da Planilha no seu Google Drive
 PLANILHA_ID = "1S54b0QtWYaCAgrDNpdQM7ZG5f_KbYXpDztK5TSOn2vU"
 ABA_NOME = "AGENDA"
-ARQUIVO_CREDENCIAIS = "credentials.json" # Mantenha este arquivo fora do GitHub (.gitignore)
+
+# --- CONFIGURAÇÃO DA GOVERNANÇA (Conexão Segura via Streamlit Secrets) ---
 
 @st.cache_resource
 def conectar_sheets():
-    """Tenta conectar ao Google Sheets usando a Service Account."""
+    """Tenta conectar ao Google Sheets usando Streamlit Secrets (Recomendado para Cloud)."""
     try:
-        # A Service Account é a melhor prática para backend/scripts.
-        gc = gspread.service_account(filename=ARQUIVO_CREDENCIAIS)
+        # A forma Limpa: Usa o gspread para criar o cliente diretamente do dicionário
+        # O dicionário 'gspread' é lido do arquivo .streamlit/secrets.toml
+        gc = gspread.service_account_from_dict(st.secrets["gspread"])
         
         # Abre a planilha pela ID e a aba pelo nome
         spreadsheet = gc.open_by_key(PLANILHA_ID)
         sheet = spreadsheet.worksheet(ABA_NOME)
         
+        st.sidebar.success("✅ Conexão com Google Sheets estabelecida.")
         return sheet
-    except FileNotFoundError:
-        st.error(f"🚨 Arquivo de credenciais '{ARQUIVO_CREDENCIAIS}' não encontrado. O sistema de agendamento não será iniciado sem a identidade.")
+    except KeyError:
+        st.error("🚨 Secrets do 'gspread' não configurados. Por favor, adicione as chaves no Streamlit Cloud.")
     except Exception as e:
-        st.error(f"🚨 Erro ao conectar ao Sheets. Verifique a ID, nome da ABA ou o compartilhamento. Erro: {e}")
+        # Erros como ID incorreta ou falta de compartilhamento
+        st.error(f"🚨 Erro ao conectar ou acessar o Sheets. Verifique o compartilhamento com a Service Account. Erro: {e}")
     return None
 
 # --- FUNÇÕES CORE DO CRUD ---
@@ -35,6 +39,7 @@ def conectar_sheets():
 def carregar_eventos(sheet):
     """Lê todos os registros (ignorando o cabeçalho) e retorna como DataFrame."""
     try:
+        # O gspread.get_all_records() ignora a primeira linha (cabeçalho)
         dados = sheet.get_all_records()
         return pd.DataFrame(dados)
     except Exception as e:
@@ -64,11 +69,11 @@ def adicionar_evento(sheet, dados_do_form):
 def atualizar_evento(sheet, id_evento, novos_dados):
     """Busca a linha pelo ID e atualiza os dados da linha."""
     try:
-        # 1. Encontra a linha pelo 'id_evento' (coluna 1)
+        # 1. Encontra a célula que contém o ID na primeira coluna (id_evento)
         cell = sheet.find(id_evento)
-        linha_index = cell.row # A linha que será atualizada (ex: 2, 3, 4...)
+        linha_index = cell.row # Linha a ser atualizada
 
-        # 2. Prepara os novos valores na ordem correta das colunas
+        # 2. Prepara os novos valores na ordem correta
         valores_atualizados = [
             novos_dados['id_evento'],
             novos_dados['titulo'],
@@ -80,13 +85,13 @@ def atualizar_evento(sheet, id_evento, novos_dados):
             novos_dados['status']
         ]
 
-        # 3. Atualiza todas as células daquela linha de uma vez (a partir da coluna 'A')
+        # 3. Atualiza todas as células daquela linha (usando notação A1)
         sheet.update(f'A{linha_index}', [valores_atualizados])
-        st.success(f"🔄 Evento {id_evento} atualizado com sucesso. Foco nos detalhes.")
+        st.success(f"🔄 Evento {id_evento[:8]}... atualizado com sucesso. Foco nos detalhes.")
         return True
 
     except gspread.exceptions.CellNotFound:
-        st.error(f"🚫 ID de Evento '{id_evento}' não encontrado. Algum erro na matriz.")
+        st.error(f"🚫 ID de Evento '{id_evento[:8]}...' não encontrado. Algum erro na matriz.")
         return False
     except Exception as e:
         st.error(f"🚫 Erro ao atualizar o evento: {e}")
@@ -96,16 +101,16 @@ def atualizar_evento(sheet, id_evento, novos_dados):
 def deletar_evento(sheet, id_evento):
     """Busca a linha pelo ID e a deleta."""
     try:
-        # 1. Encontra a linha pelo 'id_evento'
+        # 1. Encontra a célula que contém o ID
         cell = sheet.find(id_evento)
         linha_index = cell.row
 
         # 2. Deleta a linha inteira
         sheet.delete_rows(linha_index)
-        st.success(f"🗑️ Evento {id_evento} deletado. Férias merecidas para esse compromisso.")
+        st.success(f"🗑️ Evento {id_evento[:8]}... deletado. Férias merecidas para esse compromisso.")
         return True
     except gspread.exceptions.CellNotFound:
-        st.error(f"🚫 ID de Evento '{id_evento}' não encontrado. Impossível apagar algo que não existe.")
+        st.error(f"🚫 ID de Evento '{id_evento[:8]}...' não encontrado. Impossível apagar algo que não existe.")
         return False
     except Exception as e:
         st.error(f"🚫 Erro ao deletar o evento: {e}")
@@ -151,8 +156,9 @@ with tab_criar:
 
         if submit_button:
             if titulo and data: 
+                # Converte para string no formato que o Sheets gosta
                 dados_para_sheet = {
-                    'id_evento': str(uuid.uuid4()), # ID único para governança
+                    'id_evento': str(uuid.uuid4()),
                     'titulo': titulo,
                     'descricao': descricao,
                     'data_evento': data.strftime('%Y-%m-%d'),
@@ -181,14 +187,23 @@ with tab_visualizar_editar:
         st.divider()
         st.subheader("🛠️ Edição e Exclusão (U e D)")
 
-        # Permite selecionar o evento a ser editado/deletado
-        eventos_atuais = df_eventos['id_evento'].tolist()
-        evento_selecionado_id = st.selectbox(
-            "Selecione o ID do Evento para Ação:",
-            options=eventos_atuais,
-            index=0 if eventos_atuais else None,
-            format_func=lambda x: f"{df_eventos[df_eventos['id_evento'] == x]['titulo'].iloc[0]} ({x[:4]}...)"
-        )
+        # --- SELEÇÃO DE EVENTO ---
+        # Garantindo que o DataFrame tem dados antes de tentar extrair IDs
+        if not df_eventos.empty:
+            # Lista de IDs para a seleção
+            eventos_atuais = df_eventos['id_evento'].tolist()
+            
+            # Mapeamento do ID para o Título para uma seleção mais amigável
+            def formatar_selecao(id_val):
+                titulo = df_eventos[df_eventos['id_evento'] == id_val]['titulo'].iloc[0]
+                return f"{titulo} ({id_val[:4]}...)"
+
+            evento_selecionado_id = st.selectbox(
+                "Selecione o ID do Evento para Ação:",
+                options=eventos_atuais,
+                index=0 if eventos_atuais else None,
+                format_func=formatar_selecao
+            )
         
         if evento_selecionado_id:
             # Pega a linha completa do evento selecionado
@@ -206,12 +221,15 @@ with tab_visualizar_editar:
                     col_data_hora, col_local_prioridade = st.columns(2)
 
                     with col_data_hora:
+                        # Conversão segura de string para objeto date/time
                         novo_data = st.date_input("Data", value=pd.to_datetime(evento_dados['data_evento']).date())
+                        # Pega a string HH:MM e converte para time object
                         novo_hora_str = evento_dados['hora_evento']
                         novo_hora = st.time_input("Hora", value=time(int(novo_hora_str[:2]), int(novo_hora_str[3:])))
                     
                     with col_local_prioridade:
                         novo_local = st.text_input("Local", value=evento_dados['local'])
+                        # Indexa o valor atual para a seleção
                         novo_prioridade = st.selectbox("Prioridade", ["Alta", "Média", "Baixa"], index=["Alta", "Média", "Baixa"].index(evento_dados['prioridade']))
                         novo_status = st.selectbox("Status", ['Pendente', 'Concluído', 'Cancelado'], index=['Pendente', 'Concluído', 'Cancelado'].index(evento_dados['status']))
 
@@ -219,7 +237,7 @@ with tab_visualizar_editar:
 
                     if update_button:
                         dados_atualizados = {
-                            'id_evento': evento_selecionado_id,
+                            'id_evento': evento_selecionado_id, # ID é a chave!
                             'titulo': novo_titulo,
                             'descricao': nova_descricao,
                             'data_evento': novo_data.strftime('%Y-%m-%d'),
@@ -229,13 +247,12 @@ with tab_visualizar_editar:
                             'status': novo_status
                         }
                         if atualizar_evento(sheet, evento_selecionado_id, dados_atualizados):
-                            st.experimental_rerun() # Recarrega a tela para mostrar a mudança
+                            st.experimental_rerun()
             
             with col_d:
                 st.markdown("##### Excluir Evento")
-                st.write(f"Você tem certeza que quer excluir **{evento_dados['titulo']}**?")
+                st.warning(f"Excluindo: **{evento_dados['titulo']}**")
                 
-                # Botão de exclusão separado
                 if st.button("🔴 EXCLUIR EVENTO (Delete)", type="primary"):
                     if deletar_evento(sheet, evento_selecionado_id):
                         st.experimental_rerun()
