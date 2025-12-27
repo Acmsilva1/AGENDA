@@ -3,6 +3,7 @@ import gspread
 import pandas as pd
 import uuid
 from datetime import date, time
+import time # 📌 NOVO: Importa a biblioteca time para o pequeno atraso
 
 # --- CONFIGURAÇÕES DO PROJETO ---
 
@@ -16,7 +17,6 @@ ABA_NOME = "AGENDA"
 def conectar_sheets():
     """Tenta conectar ao Google Sheets usando Streamlit Secrets (Recomendado para Cloud)."""
     try:
-        # Usa o gspread para criar o cliente diretamente do dicionário de segredos
         gc = gspread.service_account_from_dict(st.secrets["gspread"])
         
         spreadsheet = gc.open_by_key(PLANILHA_ID)
@@ -156,7 +156,6 @@ with tab_criar:
                 }
                 adicionar_evento(sheet, dados_para_sheet)
                 
-                # 📌 CORREÇÃO: Limpa o cache após a escrita para forçar nova conexão/leitura
                 conectar_sheets.clear()
                 
                 st.experimental_rerun()
@@ -228,7 +227,7 @@ with tab_visualizar_editar:
                             format="DD/MM/YYYY"
                         )
                         novo_hora_str = evento_dados['hora_evento']
-                        novo_hora = st.time_input("Hora", value=time(int(novo_hora_str[:2]), int(novo_hora_str[3:])))
+                        novo_hora = st.time_input("Hora", value=time.time(int(novo_hora_str[:2]), int(novo_hora_str[3:])))
                     
                     with col_local_prioridade:
                         novo_local = st.text_input("Local", value=evento_dados['local'])
@@ -250,7 +249,6 @@ with tab_visualizar_editar:
                         }
                         if atualizar_evento(sheet, evento_selecionado_id, dados_atualizados):
                             
-                            # 📌 CORREÇÃO: Limpa o cache após o Update para forçar nova conexão/leitura
                             conectar_sheets.clear()
                             
                             st.experimental_rerun()
@@ -262,7 +260,9 @@ with tab_visualizar_editar:
                 if st.button("🔴 EXCLUIR EVENTO (Delete)", type="primary"):
                     if deletar_evento(sheet, evento_selecionado_id):
                         
-                        # 📌 CORREÇÃO: Limpa o cache após o Delete para forçar nova conexão/leitura
                         conectar_sheets.clear()
+                        
+                        # 📌 CORREÇÃO: Atraso para dar tempo à API do Sheets processar o delete
+                        time.sleep(0.5) 
                         
                         st.experimental_rerun()
