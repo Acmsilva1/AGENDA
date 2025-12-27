@@ -127,7 +127,8 @@ def deletar_evento(sheet, id_evento):
 # --- INTERFACE STREAMLIT (UI) ---
 
 st.set_page_config(layout="wide")
-st.title("🗓️ Agenda Sarcástica v1.0 (Python/Sheets)")
+# 📌 ALTERAÇÃO DO TÍTULO AQUI
+st.title("🗓️ AGENDA DE EVENTOS")
 
 sheet = conectar_sheets()
 
@@ -182,8 +183,6 @@ with tab_criar:
 # === ABA VISUALIZAR E GERENCIAR (R, U, D) ===
 with tab_visualizar_editar:
     
-    # 🛑 BLOCO DO BOTÃO REMOVIDO COMPLETAMENTE
-        
     st.info("Para atualizar a lista após uma alteração, mude para a aba 'Criar Evento' e volte para cá (ou use F5).")
     st.header("Seus Eventos Atuais (CRUD)")
     df_eventos = carregar_eventos(sheet) 
