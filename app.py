@@ -3,7 +3,7 @@ import gspread
 import pandas as pd
 import uuid
 from datetime import date, time
-import time # 📌 NOVO: Importa a biblioteca time para o pequeno atraso
+import time as t # 📌 CORREÇÃO: Usando 't' para o módulo de tempo (sleep)
 
 # --- CONFIGURAÇÕES DO PROJETO ---
 
@@ -135,7 +135,8 @@ with tab_criar:
         
         with col2:
             prioridade = st.selectbox("Prioridade:", ["Média", "Alta", "Baixa"])
-            hora = st.time_input("Hora:", time(9, 0))
+            # 📌 CORREÇÃO: O 'time' aqui é a função construtora, não o módulo.
+            hora = st.time_input("Hora:", time(9, 0)) 
             status_inicial = st.selectbox("Status Inicial:", ['Pendente', 'Rascunho'])
         
         descricao = st.text_area("Descrição Detalhada:")
@@ -227,7 +228,8 @@ with tab_visualizar_editar:
                             format="DD/MM/YYYY"
                         )
                         novo_hora_str = evento_dados['hora_evento']
-                        novo_hora = st.time_input("Hora", value=time.time(int(novo_hora_str[:2]), int(novo_hora_str[3:])))
+                        # 📌 CORREÇÃO: O 'time' aqui é a função construtora
+                        novo_hora = st.time_input("Hora", value=time(int(novo_hora_str[:2]), int(novo_hora_str[3:]))) 
                     
                     with col_local_prioridade:
                         novo_local = st.text_input("Local", value=evento_dados['local'])
@@ -262,7 +264,7 @@ with tab_visualizar_editar:
                         
                         conectar_sheets.clear()
                         
-                        # 📌 CORREÇÃO: Atraso para dar tempo à API do Sheets processar o delete
-                        time.sleep(0.5) 
+                        # Usa o alias 't' para o time.sleep
+                        t.sleep(0.5) 
                         
                         st.experimental_rerun()
