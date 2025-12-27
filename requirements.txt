@@ -1,4 +1,6 @@
-# Dependências essenciais para o Streamlit e Google Sheets
+# requirements.txt
 streamlit
 gspread
 pandas
+# 📌 Módulo para Polling
+streamlit-autorefresh
