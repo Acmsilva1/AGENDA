@@ -1,285 +1,176 @@
 import streamlit as st
 import gspread
 import pandas as pd
-import uuid
-from datetime import date, time
-import time as t 
-from streamlit_autorefresh import st_autorefresh 
+from datetime import datetime
+import time
 
-# --- CONFIGURAÇÕES DO PROJETO ---
+# --- CONFIGURAÇÃO E CONEXÃO COM GOOGLE SHEETS ---
 
-# ID da Planilha no seu Google Drive
-PLANILHA_ID = "1S54b0QtWYaCAgrDNpdQM7ZG5f_KbYXpDztK5TSOn2vU"
+# Certifique-se de que este ID corresponda à sua planilha real
+PLANILHA_ID = "1S54b0QtWYaCAgrDNpdQM7ZG5f_KbYXpDztK5TSOn2vU" 
 ABA_NOME = "AGENDA"
 
-# --- CONFIGURAÇÃO DA GOVERNANÇA (Conexão Segura e Resiliente) ---
-
-@st.cache_resource
-def conectar_sheets():
-    """Tenta conectar ao Google Sheets usando Streamlit Secrets com lógica de Retentativa."""
-    MAX_RETRIES = 3
-    
-    # Inicia a lógica de retry
-    for attempt in range(MAX_RETRIES):
-        try:
-            gc = gspread.service_account_from_dict(st.secrets["gspread"])
-            
-            spreadsheet = gc.open_by_key(PLANILHA_ID)
-            sheet = spreadsheet.worksheet(ABA_NOME)
-            
-            st.sidebar.success("✅ Conexão com Google Sheets estabelecida.")
-            return sheet
-        
-        except Exception as e:
-            # Se não for a última tentativa, espera e tenta novamente
-            if attempt < MAX_RETRIES - 1:
-                # Exponential Backoff
-                wait_time = 2 ** attempt
-                st.sidebar.warning(f"⚠️ Falha de conexão momentânea (Tentativa {attempt + 1}/{MAX_RETRIES}). Retentando em {wait_time}s...")
-                t.sleep(wait_time) 
-            else:
-                # Última tentativa falhou, registra o erro fatal
-                st.error(f"🚨 Erro fatal ao conectar após {MAX_RETRIES} tentativas. Verifique as permissões. Erro: {e}")
-                return None
-    return None
-
-
-# --- FUNÇÕES CORE DO CRUD ---
-
-# R (Read) - Lê todos os eventos
-def carregar_eventos(sheet):
-    """Lê todos os registros (ignorando o cabeçalho) e retorna como DataFrame."""
-    
-    # Defende contra sheet=None
-    if sheet is None:
-         return pd.DataFrame()
-         
+# 📌 Função de Conexão e Autenticação Segura (Lê st.secrets)
+@st.cache_resource(ttl=3600)
+def get_gspread_client():
+    """Conecta-se ao Google Sheets usando as credenciais do Streamlit Secrets."""
     try:
-        dados = sheet.get_all_records()
-        return pd.DataFrame(dados)
+        # Acessa as credenciais do secrets.toml
+        creds = st.secrets["gspread"]
+        
+        # Conecta usando o método service_account_from_dict
+        gc = gspread.service_account_from_dict(creds)
+        
+        spreadsheet = gc.open_by_key(PLANILHA_ID)
+        return spreadsheet
     except Exception as e:
+        st.error(f"Erro de conexão com Google Sheets: {e}")
+        st.stop()
+        
+spreadsheet = get_gspread_client()
+sheet = spreadsheet.worksheet(ABA_NOME)
+
+# --- FUNÇÕES DE DADOS ---
+
+@st.cache_data(ttl=10) # Cache de 10 segundos para leitura
+def carregar_eventos(_sheet):
+    """Lê todos os registros e retorna como DataFrame."""
+    try:
+        dados = _sheet.get_all_records()
+        df = pd.DataFrame(dados)
+        
+        # Trata a coluna de data
+        df['data_evento'] = pd.to_datetime(df['data_evento'], errors='coerce')
+        
+        # Garante que a coluna ID seja inteira ou string
+        if 'id_evento' in df.columns:
+            df['id_evento'] = df['id_evento'].astype(str)
+            
+        return df
+    except Exception as e:
+        st.error(f"Erro ao carregar dados: {e}")
         return pd.DataFrame()
 
-# C (Create) - Adiciona um novo evento
-def adicionar_evento(sheet, dados_do_form):
-    """Insere uma nova linha de evento no Sheets."""
+def adicionar_evento(dados_evento):
+    """Adiciona um novo evento à planilha."""
+    # Encontra a primeira linha vazia para inserir
+    proxima_linha = len(sheet.get_all_values()) + 1
     
-    nova_linha = [
-        dados_do_form.get('id_evento'),
-        dados_do_form.get('titulo'),
-        dados_do_form.get('descricao'),
-        dados_do_form.get('data_evento'),
-        dados_do_form.get('hora_evento'),
-        dados_do_form.get('local'),
-        dados_do_form.get('prioridade'),
-        dados_do_form.get('status')
+    # Adiciona o ID (usa a linha como ID simples)
+    dados_evento['id_evento'] = str(proxima_linha - 1) 
+    
+    # Converte o dicionário para a ordem correta das colunas antes de inserir
+    cabecalhos = [h.lower() for h in sheet.row_values(1)] # Assume cabeçalhos minúsculos para mapeamento
+    
+    valores_para_inserir = [dados_evento.get(h, '') for h in cabecalhos]
+    
+    # Insere os dados
+    sheet.append_row(valores_para_inserir)
+
+# --- LAYOUT E INTERFACE ---
+
+st.set_page_config(layout="wide", page_title="Agenda de Governança")
+
+# Título principal
+st.title("🤖 Painel de Governança de Eventos")
+
+# Carrega os dados mais recentes
+df_todos = carregar_eventos(sheet)
+
+# --- BARRA LATERAL (FILTROS) ---
+st.sidebar.header("🗄️ Filtros de Visualização")
+
+# 📌 FILTRO DE STATUS AJUSTADO (Coerente com a regra PENDENTE/CONCLUÍDO)
+filtro_status = st.sidebar.radio(
+    "Mostrar eventos por status:", 
+    options=["Pendentes", "Concluídos", "Todos"], 
+    index=0 # Padrão: Mostrar apenas Pendentes
+)
+
+# Lógica de filtragem para exibição
+if filtro_status == "Pendentes":
+    df_exibicao = df_todos[df_todos['status'] == 'Pendente']
+elif filtro_status == "Concluídos":
+    df_exibicao = df_todos[df_todos['status'] == 'Concluído']
+else: # Todos
+    df_exibicao = df_todos
+    
+# --- DASHBOARD PRINCIPAL ---
+
+col1, col2 = st.columns([3, 1])
+
+# Coluna 1: Tabela de Eventos
+with col1:
+    st.subheader(f"Lista de Eventos ({filtro_status}) - {len(df_exibicao)} Registros")
+    st.dataframe(df_exibicao.drop(columns=['id_evento'], errors='ignore'), use_container_width=True)
+
+# Coluna 2: Métricas de Governança (Simples)
+with col2:
+    st.subheader("Métricas")
+    
+    total_pendentes = len(df_todos[df_todos['status'] == 'Pendente'])
+    total_concluidos = len(df_todos[df_todos['status'] == 'Concluído'])
+    
+    # Calcula itens vencidos (para exibição)
+    hoje = datetime.now().date()
+    df_pendentes_vencidos = df_todos[
+        (df_todos['status'] == 'Pendente') & 
+        (df_todos['data_evento'].dt.date < hoje)
     ]
+    total_vencidos = len(df_pendentes_vencidos)
     
-    sheet.append_row(nova_linha)
-    st.success("🎉 Evento criado. Mais um compromisso para a sua vida. **A lista na outra aba será atualizada automaticamente em 10 segundos.**") 
-    conectar_sheets.clear()
-
-# U (Update) - Atualiza um evento existente
-def atualizar_evento(sheet, id_evento, novos_dados):
-    """Busca a linha pelo ID e atualiza os dados da linha."""
-    try:
-        cell = sheet.find(id_evento)
-        linha_index = cell.row 
-
-        valores_atualizados = [
-            novos_dados['id_evento'],
-            novos_dados['titulo'],
-            novos_dados['descricao'],
-            novos_dados['data_evento'],
-            novos_dados['hora_evento'],
-            novos_dados['local'],
-            novos_dados['prioridade'],
-            novos_dados['status']
-        ]
-
-        sheet.update(f'A{linha_index}', [valores_atualizados])
-        st.success(f"🔄 Evento {id_evento[:8]}... atualizado com sucesso. Foco nos detalhes. **A lista na outra aba será atualizada automaticamente em 10 segundos.**") 
-        conectar_sheets.clear()
-        return True
-
-    except gspread.exceptions.CellNotFound:
-        st.error(f"🚫 ID de Evento '{id_evento[:8]}...' não encontrado. Algum erro na matriz.")
-        return False
-    except Exception as e:
-        st.error(f"🚫 Erro ao atualizar o evento: {e}")
-        return False
-
-# D (Delete) - Remove um evento
-def deletar_evento(sheet, id_evento):
-    """Busca a linha pelo ID e a deleta."""
-    try:
-        cell = sheet.find(id_evento)
-        linha_index = cell.row
-
-        sheet.delete_rows(linha_index)
-        st.success(f"🗑️ Evento {id_evento[:8]}... deletado. Férias merecidas para esse compromisso. **A lista na outra aba será atualizada automaticamente em 10 segundos.**") 
-        conectar_sheets.clear()
-        return True
-    except gspread.exceptions.CellNotFound:
-        st.error(f"🚫 ID de Evento '{id_evento[:8]}...' não encontrado. Impossível apagar algo que não existe.")
-        return False
-    except Exception as e:
-        st.error(f"🚫 Erro ao deletar o evento: {e}")
-        return False
+    st.metric(label="Total de Pendentes", value=total_pendentes)
+    st.metric(label="Total de Concluídos", value=total_concluidos)
+    st.metric(label="🚨 Vencidos e Pendentes", value=total_vencidos, delta=-total_vencidos if total_vencidos > 0 else "0", delta_color="inverse")
 
 
-# --- INTERFACE STREAMLIT (UI) ---
+# --- ADICIONAR NOVO EVENTO ---
+st.markdown("---")
+st.header("➕ Adicionar Novo Evento")
 
-st.set_page_config(layout="wide")
-st.title("🗓️ AGENDA DE EVENTOS")
+with st.form("form_novo_evento"):
+    col_f1, col_f2 = st.columns([2, 1])
 
-sheet = conectar_sheets()
-
-if sheet is None:
-    st.stop()
-
-
-tab_criar, tab_visualizar_editar = st.tabs(["➕ Criar Evento", "👁️ Visualizar e Gerenciar"])
-
-
-# === ABA CRIAR ===
-with tab_criar:
-    st.header("REGISTRAR NOVO EVENTO")
+    with col_f1:
+        titulo = st.text_input("Título do Evento (Obrigatório)", max_chars=100)
+        descricao = st.text_area("Descrição")
+        local = st.text_input("Local / Link")
     
-    with st.form("form_novo_evento", clear_on_submit=True):
-        col1, col2 = st.columns(2)
+    with col_f2:
+        data_evento = st.date_input("Data do Evento", value=hoje)
+        hora_evento = st.time_input("Hora do Evento", value=datetime.now().time())
         
-        with col1:
-            titulo = st.text_input("TÍTULO DO EVENTO", max_chars=100)
-            local = st.text_input("Local ou Link da Reunião:")
-            data = st.date_input("Data:", date.today(), format="DD/MM/YYYY") 
+        # Opções de Prioridade
+        prioridade_options = ['Baixa', 'Média', 'Alta']
+        prioridade = st.selectbox("Prioridade", options=prioridade_options, index=1)
         
-        with col2:
-            prioridade = st.selectbox("Prioridade:", ["Média", "Alta", "Baixa"])
-            hora = st.time_input("Hora:", time(9, 0)) 
-            status_inicial = st.selectbox("Status Inicial:", ['Pendente', 'Rascunho'])
-        
-        descricao = st.text_area("Descrição Detalhada:")
-        
-        submit_button = st.form_submit_button("Salvar Novo Evento")
+        # 📌 STATUS AJUSTADO NO FORMULÁRIO
+        status_options = ['Pendente', 'Concluído']
+        status_evento = st.selectbox("Status", options=status_options, index=0) 
 
-        if submit_button:
-            if titulo and data: 
-                dados_para_sheet = {
-                    'id_evento': str(uuid.uuid4()),
-                    'titulo': titulo,
-                    'descricao': descricao,
-                    'data_evento': data.strftime('%Y-%m-%d'), 
-                    'hora_evento': hora.strftime('%H:%M'),
-                    'local': local,
-                    'prioridade': prioridade,
-                    'status': status_inicial
-                }
-                adicionar_evento(sheet, dados_para_sheet)
+    submitted = st.form_submit_button("Salvar Novo Evento")
+    
+    if submitted:
+        if titulo:
+            novo_evento = {
+                'id_evento': '', # Será preenchido na função
+                'titulo': titulo,
+                'descricao': descricao,
+                'data_evento': data_evento.strftime('%Y-%m-%d'), # Formato padrão ISO
+                'hora_evento': hora_evento.strftime('%H:%M'),
+                'local': local,
+                'prioridade': prioridade,
+                'status': status_evento
+            }
+            
+            try:
+                adicionar_evento(novo_evento)
+                st.success(f"Evento '{titulo}' adicionado com sucesso!")
                 
-            else:
-                st.warning("O Título e a Data são obrigatórios. Não complique.")
-
-
-# === ABA VISUALIZAR E GERENCIAR (R, U, D) ===
-with tab_visualizar_editar:
-    
-    st_autorefresh(interval=10000, key="data_refresh_key")
-    # 📌 ALTERAÇÃO DA FRASE AQUI
-    st.info("🔄 **ATUALIZAÇÃO AUTOMÁTICA** (A cada 10 segundos)")
-    
-    st.header("MEUS EVENTOS")
-    
-    df_eventos = carregar_eventos(sheet) 
-    
-    if df_eventos.empty:
-        st.info("SEM REGISTROS")
-    else:
-        
-        df_display = df_eventos.copy()
-        
-        if 'data_evento' in df_display.columns:
-            df_display['data_evento'] = pd.to_datetime(df_display['data_evento'], errors='coerce').dt.strftime('%d/%m/%Y')
-        
-        df_display.rename(columns={
-            'id_evento': 'ID', 
-            'titulo': 'Título', 
-            'data_evento': 'Data',
-            'hora_evento': 'Hora',
-            'descricao': 'Descrição',
-            'local': 'Local',
-            'prioridade': 'Prioridade',
-            'status': 'Status'
-        }, inplace=True)
-        
-        st.dataframe(df_display.sort_values(by='Data', ascending=False), use_container_width=True, hide_index=True)
-        
-        st.divider()
-        st.subheader("🛠️ Edição e Exclusão")
-
-        if not df_eventos.empty:
-            
-            eventos_atuais = df_eventos['id_evento'].tolist()
-            
-            def formatar_selecao(id_val):
-                titulo = df_eventos[df_eventos['id_evento'] == id_val]['titulo'].iloc[0]
-                return f"{titulo} ({id_val[:4]}...)"
-
-            evento_selecionado_id = st.selectbox(
-                "Selecione o Evento para Ação (Edição/Exclusão):",
-                options=eventos_atuais,
-                index=0 if eventos_atuais else None,
-                format_func=formatar_selecao
-            )
-        
-        if evento_selecionado_id:
-            evento_dados = df_eventos[df_eventos['id_evento'] == evento_selecionado_id].iloc[0]
-
-            col_u, col_d = st.columns([3, 1])
-
-            with col_u:
-                st.markdown("##### Atualizar Evento Selecionado")
-                with st.form("form_update_evento"):
-                    novo_titulo = st.text_input("TÍTULO DO EVENTO", value=evento_dados['titulo'])
-                    nova_descricao = st.text_area("Descrição", value=evento_dados['descricao'])
-
-                    col_data_hora, col_local_prioridade = st.columns(2)
-
-                    with col_data_hora:
-                        novo_data = st.date_input(
-                            "Data", 
-                            value=pd.to_datetime(evento_dados['data_evento']).date(),
-                            format="DD/MM/YYYY"
-                        )
-                        novo_hora_str = evento_dados['hora_evento']
-                        novo_hora = st.time_input("Hora", value=time(int(novo_hora_str[:2]), int(novo_hora_str[3:])))
-                    
-                    with col_local_prioridade:
-                        novo_local = st.text_input("Local", value=evento_dados['local'])
-                        opcoes_prioridade = ["Alta", "Média", "Baixa"]
-                        novo_prioridade = st.selectbox("Prioridade", opcoes_prioridade, index=opcoes_prioridade.index(evento_dados['prioridade']))
-                        opcoes_status = ['Pendente', 'Concluído', 'Cancelado']
-                        novo_status = st.selectbox("Status", opcoes_status, index=opcoes_status.index(evento_dados['status']))
-
-                    update_button = st.form_submit_button("Salvar Atualizações (Update)")
-
-                    if update_button:
-                        dados_atualizados = {
-                            'id_evento': evento_selecionado_id, 
-                            'titulo': novo_titulo,
-                            'descricao': nova_descricao,
-                            'data_evento': novo_data.strftime('%Y-%m-%d'),
-                            'hora_evento': novo_hora.strftime('%H:%M'),
-                            'local': novo_local,
-                            'prioridade': novo_prioridade,
-                            'status': novo_status
-                        }
-                        atualizar_evento(sheet, evento_selecionado_id, dados_atualizados)
-                            
-            
-            with col_d:
-                st.markdown("##### Excluir Evento")
-                st.warning(f"Excluindo: **{evento_dados['titulo']}**")
-                
-                if st.button("🔴 EXCLUIR EVENTO (Delete)", type="primary"):
-                    deletar_evento(sheet, evento_selecionado_id)
+                # Força a atualização do cache e da tela após a inserção
+                st.cache_data.clear()
+                st.rerun() 
+            except Exception as e:
+                st.error(f"Erro ao salvar na planilha: {e}")
+        else:
+            st.error("O Título do Evento é obrigatório.")
