@@ -140,14 +140,14 @@ tab_criar, tab_visualizar_editar = st.tabs(["➕ Criar Evento", "👁️ Visuali
 
 # === ABA CRIAR ===
 with tab_criar:
-    # 📌 ALTERAÇÃO 1: Título da Aba "Criar Evento"
     st.header("REGISTRAR NOVO EVENTO")
     
     with st.form("form_novo_evento", clear_on_submit=True):
         col1, col2 = st.columns(2)
         
         with col1:
-            titulo = st.text_input("Título Principal (Exato!)", max_chars=100)
+            # 📌 ALTERAÇÃO DO RÓTULO AQUI
+            titulo = st.text_input("TÍTULO DO EVENTO", max_chars=100)
             local = st.text_input("Local ou Link da Reunião:")
             data = st.date_input("Data:", date.today(), format="DD/MM/YYYY") 
         
@@ -185,13 +185,11 @@ with tab_visualizar_editar:
     
     st.info("Para atualizar a lista após uma alteração, mude para a aba 'Criar Evento' e volte para cá (ou use F5).")
     
-    # 📌 ALTERAÇÃO 2: Título da Aba "Visualizar Eventos"
     st.header("MEUS EVENTOS")
     
     df_eventos = carregar_eventos(sheet) 
     
     if df_eventos.empty:
-        # 📌 ALTERAÇÃO 3: Mensagem de Sem Registros
         st.info("SEM REGISTROS")
     else:
         
