@@ -3,7 +3,7 @@ import gspread
 import pandas as pd
 import uuid
 from datetime import date, time
-import time as t # Usando 't' para time.sleep()
+import time as t 
 
 # --- CONFIGURAÇÕES DO PROJETO ---
 
@@ -32,7 +32,7 @@ def conectar_sheets():
         except Exception as e:
             # Se não for a última tentativa, espera e tenta novamente
             if attempt < MAX_RETRIES - 1:
-                # Exponential Backoff: 1s, 2s, 4s...
+                # Exponential Backoff
                 wait_time = 2 ** attempt
                 st.sidebar.warning(f"⚠️ Falha de conexão momentânea (Tentativa {attempt + 1}/{MAX_RETRIES}). Retentando em {wait_time}s...")
                 t.sleep(wait_time) 
@@ -49,7 +49,7 @@ def conectar_sheets():
 def carregar_eventos(sheet):
     """Lê todos os registros (ignorando o cabeçalho) e retorna como DataFrame."""
     
-    # Defende contra sheet=None, o causador do AttributeError
+    # Defende contra sheet=None
     if sheet is None:
          return pd.DataFrame()
          
@@ -75,7 +75,7 @@ def adicionar_evento(sheet, dados_do_form):
     ]
     
     sheet.append_row(nova_linha)
-    st.success("🎉 Evento criado. Mais um compromisso para a sua vida.")
+    st.success("🎉 Evento criado. Mais um compromisso para a sua vida. **Clique na aba 'Visualizar' para ver a lista atualizada.**") # Mensagem de guia
 
 # U (Update) - Atualiza um evento existente
 def atualizar_evento(sheet, id_evento, novos_dados):
@@ -96,7 +96,7 @@ def atualizar_evento(sheet, id_evento, novos_dados):
         ]
 
         sheet.update(f'A{linha_index}', [valores_atualizados])
-        st.success(f"🔄 Evento {id_evento[:8]}... atualizado com sucesso. Foco nos detalhes.")
+        st.success(f"🔄 Evento {id_evento[:8]}... atualizado com sucesso. Foco nos detalhes. **Clique na aba 'Visualizar' para ver a lista atualizada.**") # Mensagem de guia
         return True
 
     except gspread.exceptions.CellNotFound:
@@ -114,7 +114,7 @@ def deletar_evento(sheet, id_evento):
         linha_index = cell.row
 
         sheet.delete_rows(linha_index)
-        st.success(f"🗑️ Evento {id_evento[:8]}... deletado. Férias merecidas para esse compromisso.")
+        st.success(f"🗑️ Evento {id_evento[:8]}... deletado. Férias merecidas para esse compromisso. **Clique na aba 'Visualizar' para ver a lista atualizada.**") # Mensagem de guia
         return True
     except gspread.exceptions.CellNotFound:
         st.error(f"🚫 ID de Evento '{id_evento[:8]}...' não encontrado. Impossível apagar algo que não existe.")
@@ -174,10 +174,8 @@ with tab_criar:
                 }
                 adicionar_evento(sheet, dados_para_sheet)
                 
-                # A lógica de retry agora garante a reconexão.
+                # 🛑 REMOVIDO: st.experimental_rerun() para evitar o bug interno do Streamlit.
                 conectar_sheets.clear() 
-                
-                st.experimental_rerun()
             else:
                 st.warning("O Título e a Data são obrigatórios. Não complique.")
 
@@ -270,7 +268,7 @@ with tab_visualizar_editar:
                             
                             conectar_sheets.clear()
                             
-                            st.experimental_rerun()
+                            # 🛑 REMOVIDO: st.experimental_rerun()
             
             with col_d:
                 st.markdown("##### Excluir Evento")
@@ -281,4 +279,4 @@ with tab_visualizar_editar:
                         
                         conectar_sheets.clear()
                         
-                        st.experimental_rerun()
+                        # 🛑 REMOVIDO: st.experimental_rerun()
