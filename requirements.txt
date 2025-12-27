@@ -1,0 +1,4 @@
+# Dependências essenciais para o Streamlit e Google Sheets
+streamlit
+gspread
+pandas
