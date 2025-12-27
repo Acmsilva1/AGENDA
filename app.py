@@ -17,7 +17,6 @@ def conectar_sheets():
     """Tenta conectar ao Google Sheets usando Streamlit Secrets (Recomendado para Cloud)."""
     try:
         # A forma Limpa: Usa o gspread para criar o cliente diretamente do dicionário
-        # O dicionário 'gspread' é lido do arquivo .streamlit/secrets.toml
         gc = gspread.service_account_from_dict(st.secrets["gspread"])
         
         # Abre a planilha pela ID e a aba pelo nome
@@ -29,7 +28,6 @@ def conectar_sheets():
     except KeyError:
         st.error("🚨 Secrets do 'gspread' não configurados. Por favor, adicione as chaves no Streamlit Cloud.")
     except Exception as e:
-        # Erros como ID incorreta ou falta de compartilhamento
         st.error(f"🚨 Erro ao conectar ou acessar o Sheets. Verifique o compartilhamento com a Service Account. Erro: {e}")
     return None
 
@@ -39,7 +37,6 @@ def conectar_sheets():
 def carregar_eventos(sheet):
     """Lê todos os registros (ignorando o cabeçalho) e retorna como DataFrame."""
     try:
-        # O gspread.get_all_records() ignora a primeira linha (cabeçalho)
         dados = sheet.get_all_records()
         return pd.DataFrame(dados)
     except Exception as e:
@@ -69,11 +66,9 @@ def adicionar_evento(sheet, dados_do_form):
 def atualizar_evento(sheet, id_evento, novos_dados):
     """Busca a linha pelo ID e atualiza os dados da linha."""
     try:
-        # 1. Encontra a célula que contém o ID na primeira coluna (id_evento)
         cell = sheet.find(id_evento)
-        linha_index = cell.row # Linha a ser atualizada
+        linha_index = cell.row 
 
-        # 2. Prepara os novos valores na ordem correta
         valores_atualizados = [
             novos_dados['id_evento'],
             novos_dados['titulo'],
@@ -85,7 +80,6 @@ def atualizar_evento(sheet, id_evento, novos_dados):
             novos_dados['status']
         ]
 
-        # 3. Atualiza todas as células daquela linha (usando notação A1)
         sheet.update(f'A{linha_index}', [valores_atualizados])
         st.success(f"🔄 Evento {id_evento[:8]}... atualizado com sucesso. Foco nos detalhes.")
         return True
@@ -101,11 +95,9 @@ def atualizar_evento(sheet, id_evento, novos_dados):
 def deletar_evento(sheet, id_evento):
     """Busca a linha pelo ID e a deleta."""
     try:
-        # 1. Encontra a célula que contém o ID
         cell = sheet.find(id_evento)
         linha_index = cell.row
 
-        # 2. Deleta a linha inteira
         sheet.delete_rows(linha_index)
         st.success(f"🗑️ Evento {id_evento[:8]}... deletado. Férias merecidas para esse compromisso.")
         return True
@@ -129,7 +121,6 @@ if sheet is None:
     st.stop()
 
 
-# Organização da UI em abas para melhor UX
 tab_criar, tab_visualizar_editar = st.tabs(["➕ Criar Evento", "👁️ Visualizar e Gerenciar"])
 
 
@@ -143,7 +134,8 @@ with tab_criar:
         with col1:
             titulo = st.text_input("Título Principal (Exato!)", max_chars=100)
             local = st.text_input("Local ou Link da Reunião:")
-            data = st.date_input("Data:", date.today())
+            # 📌 CORRIGIDO: Adicionado format="DD/MM/YYYY" para exibição BR
+            data = st.date_input("Data:", date.today(), format="DD/MM/YYYY") 
         
         with col2:
             prioridade = st.selectbox("Prioridade:", ["Média", "Alta", "Baixa"])
@@ -156,12 +148,12 @@ with tab_criar:
 
         if submit_button:
             if titulo and data: 
-                # Converte para string no formato que o Sheets gosta
+                # Salva a data no formato ISO 8601 (YYYY-MM-DD) para consistência do DB (Sheets)
                 dados_para_sheet = {
                     'id_evento': str(uuid.uuid4()),
                     'titulo': titulo,
                     'descricao': descricao,
-                    'data_evento': data.strftime('%Y-%m-%d'),
+                    'data_evento': data.strftime('%Y-%m-%d'), # Formato de Salvamento (ISO)
                     'hora_evento': hora.strftime('%H:%M'),
                     'local': local,
                     'prioridade': prioridade,
@@ -181,19 +173,35 @@ with tab_visualizar_editar:
     if df_eventos.empty:
         st.info("Nenhum evento na agenda. Você está de férias ou está procrastinando?")
     else:
-        # Exibe os dados de forma editável, mas apenas para referência
-        st.dataframe(df_eventos.sort_values(by='data_evento', ascending=False), use_container_width=True, hide_index=True)
+        
+        # 📌 CORRIGIDO: Formatação para exibição no padrão brasileiro (DD/MM/AAAA)
+        df_display = df_eventos.copy()
+        
+        if 'data_evento' in df_display.columns:
+            # Converte a coluna para datetime e depois formata para DD/MM/AAAA
+            df_display['data_evento'] = pd.to_datetime(df_display['data_evento'], errors='coerce').dt.strftime('%d/%m/%Y')
+        
+        # Opcional: Renomear colunas para melhor leitura em português
+        df_display.rename(columns={
+            'id_evento': 'ID', 
+            'titulo': 'Título', 
+            'data_evento': 'Data',
+            'hora_evento': 'Hora',
+            'descricao': 'Descrição',
+            'local': 'Local',
+            'prioridade': 'Prioridade',
+            'status': 'Status'
+        }, inplace=True)
+        
+        # Exibe os dados formatados
+        st.dataframe(df_display.sort_values(by='Data', ascending=False), use_container_width=True, hide_index=True)
         
         st.divider()
         st.subheader("🛠️ Edição e Exclusão (U e D)")
 
-        # --- SELEÇÃO DE EVENTO ---
-        # Garantindo que o DataFrame tem dados antes de tentar extrair IDs
         if not df_eventos.empty:
-            # Lista de IDs para a seleção
             eventos_atuais = df_eventos['id_evento'].tolist()
             
-            # Mapeamento do ID para o Título para uma seleção mais amigável
             def formatar_selecao(id_val):
                 titulo = df_eventos[df_eventos['id_evento'] == id_val]['titulo'].iloc[0]
                 return f"{titulo} ({id_val[:4]}...)"
@@ -206,7 +214,6 @@ with tab_visualizar_editar:
             )
         
         if evento_selecionado_id:
-            # Pega a linha completa do evento selecionado
             evento_dados = df_eventos[df_eventos['id_evento'] == evento_selecionado_id].iloc[0]
 
             col_u, col_d = st.columns([3, 1])
@@ -214,33 +221,34 @@ with tab_visualizar_editar:
             with col_u:
                 st.markdown("##### Atualizar Evento Selecionado")
                 with st.form("form_update_evento"):
-                    # Pré-popula o formulário com os dados atuais do evento
                     novo_titulo = st.text_input("Título", value=evento_dados['titulo'])
                     nova_descricao = st.text_area("Descrição", value=evento_dados['descricao'])
 
                     col_data_hora, col_local_prioridade = st.columns(2)
 
                     with col_data_hora:
-                        # Conversão segura de string para objeto date/time
-                        novo_data = st.date_input("Data", value=pd.to_datetime(evento_dados['data_evento']).date())
-                        # Pega a string HH:MM e converte para time object
+                        novo_data = st.date_input(
+                            "Data", 
+                            value=pd.to_datetime(evento_dados['data_evento']).date(),
+                            format="DD/MM/YYYY" # 📌 CORRIGIDO: Formato BR
+                        )
                         novo_hora_str = evento_dados['hora_evento']
                         novo_hora = st.time_input("Hora", value=time(int(novo_hora_str[:2]), int(novo_hora_str[3:])))
                     
                     with col_local_prioridade:
                         novo_local = st.text_input("Local", value=evento_dados['local'])
-                        # Indexa o valor atual para a seleção
                         novo_prioridade = st.selectbox("Prioridade", ["Alta", "Média", "Baixa"], index=["Alta", "Média", "Baixa"].index(evento_dados['prioridade']))
                         novo_status = st.selectbox("Status", ['Pendente', 'Concluído', 'Cancelado'], index=['Pendente', 'Concluído', 'Cancelado'].index(evento_dados['status']))
 
                     update_button = st.form_submit_button("Salvar Atualizações (Update)")
 
                     if update_button:
+                        # Salva a data no formato ISO 8601 (YYYY-MM-DD) para o Sheets
                         dados_atualizados = {
-                            'id_evento': evento_selecionado_id, # ID é a chave!
+                            'id_evento': evento_selecionado_id, 
                             'titulo': novo_titulo,
                             'descricao': nova_descricao,
-                            'data_evento': novo_data.strftime('%Y-%m-%d'),
+                            'data_evento': novo_data.strftime('%Y-%m-%d'), # Formato de Salvamento (ISO)
                             'hora_evento': novo_hora.strftime('%H:%M'),
                             'local': novo_local,
                             'prioridade': novo_prioridade,
