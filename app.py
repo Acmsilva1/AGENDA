@@ -4,6 +4,8 @@ import pandas as pd
 import uuid
 from datetime import date, time
 import time as t 
+# 📌 NOVA IMPORTAÇÃO
+from streamlit_autorefresh import st_autorefresh 
 
 # --- CONFIGURAÇÕES DO PROJETO ---
 
@@ -75,7 +77,7 @@ def adicionar_evento(sheet, dados_do_form):
     ]
     
     sheet.append_row(nova_linha)
-    st.success("🎉 Evento criado. Mais um compromisso para a sua vida. **TROQUE DE ABA ou atualize a página (F5) para ver a lista.**") 
+    st.success("🎉 Evento criado. Mais um compromisso para a sua vida. **A lista na outra aba será atualizada automaticamente em 10 segundos.**") 
     conectar_sheets.clear()
 
 # U (Update) - Atualiza um evento existente
@@ -97,7 +99,7 @@ def atualizar_evento(sheet, id_evento, novos_dados):
         ]
 
         sheet.update(f'A{linha_index}', [valores_atualizados])
-        st.success(f"🔄 Evento {id_evento[:8]}... atualizado com sucesso. Foco nos detalhes. **TROQUE DE ABA ou atualize a página (F5) para ver a lista.**") 
+        st.success(f"🔄 Evento {id_evento[:8]}... atualizado com sucesso. Foco nos detalhes. **A lista na outra aba será atualizada automaticamente em 10 segundos.**") 
         conectar_sheets.clear()
         return True
 
@@ -116,7 +118,7 @@ def deletar_evento(sheet, id_evento):
         linha_index = cell.row
 
         sheet.delete_rows(linha_index)
-        st.success(f"🗑️ Evento {id_evento[:8]}... deletado. Férias merecidas para esse compromisso. **TROQUE DE ABA ou atualize a página (F5) para ver a lista.**") 
+        st.success(f"🗑️ Evento {id_evento[:8]}... deletado. Férias merecidas para esse compromisso. **A lista na outra aba será atualizada automaticamente em 10 segundos.**") 
         conectar_sheets.clear()
         return True
     except gspread.exceptions.CellNotFound:
@@ -183,8 +185,11 @@ with tab_criar:
 # === ABA VISUALIZAR E GERENCIAR (R, U, D) ===
 with tab_visualizar_editar:
     
-    # 🛑 POLING/RERUN REMOVIDO PARA EVITAR BUGS DE SINTAXE/STREAMLIT CLOUD
-    st.info("Para atualizar a lista após uma alteração, mude para a aba 'Criar Evento' e volte para cá (ou use F5).")
+    # 📌 CÓDIGO FINAL E ESTÁVEL PARA POLLING
+    # Intervalo de 10 segundos (10000 milissegundos). 
+    # st_autorefresh é um componente que resolve o problema do Streamlit.
+    st_autorefresh(interval=10000, key="data_refresh_key")
+    st.info("A lista abaixo está em modo *quase real-time* e se atualiza automaticamente a cada 10 segundos.")
     
     st.header("MEUS EVENTOS")
     
