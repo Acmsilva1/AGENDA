@@ -3,7 +3,7 @@ import gspread
 import pandas as pd
 import uuid
 from datetime import date, time
-import time as t # 📌 CORREÇÃO: Usando 't' para o módulo de tempo (sleep)
+import time as t # Usando 't' para time.sleep() para evitar conflito com datetime.time()
 
 # --- CONFIGURAÇÕES DO PROJETO ---
 
@@ -131,11 +131,12 @@ with tab_criar:
         with col1:
             titulo = st.text_input("Título Principal (Exato!)", max_chars=100)
             local = st.text_input("Local ou Link da Reunião:")
+            # Formato brasileiro
             data = st.date_input("Data:", date.today(), format="DD/MM/YYYY") 
         
         with col2:
             prioridade = st.selectbox("Prioridade:", ["Média", "Alta", "Baixa"])
-            # 📌 CORREÇÃO: O 'time' aqui é a função construtora, não o módulo.
+            # Função construtora time (importada de datetime)
             hora = st.time_input("Hora:", time(9, 0)) 
             status_inicial = st.selectbox("Status Inicial:", ['Pendente', 'Rascunho'])
         
@@ -149,7 +150,7 @@ with tab_criar:
                     'id_evento': str(uuid.uuid4()),
                     'titulo': titulo,
                     'descricao': descricao,
-                    'data_evento': data.strftime('%Y-%m-%d'), 
+                    'data_evento': data.strftime('%Y-%m-%d'), # Formato ISO para Sheets
                     'hora_evento': hora.strftime('%H:%M'),
                     'local': local,
                     'prioridade': prioridade,
@@ -158,6 +159,9 @@ with tab_criar:
                 adicionar_evento(sheet, dados_para_sheet)
                 
                 conectar_sheets.clear()
+                
+                # 📌 CORREÇÃO: Atraso para estabilidade após a escrita (C)
+                t.sleep(0.5) 
                 
                 st.experimental_rerun()
             else:
@@ -228,8 +232,7 @@ with tab_visualizar_editar:
                             format="DD/MM/YYYY"
                         )
                         novo_hora_str = evento_dados['hora_evento']
-                        # 📌 CORREÇÃO: O 'time' aqui é a função construtora
-                        novo_hora = st.time_input("Hora", value=time(int(novo_hora_str[:2]), int(novo_hora_str[3:]))) 
+                        novo_hora = st.time_input("Hora", value=time(int(novo_hora_str[:2]), int(novo_hora_str[3:])))
                     
                     with col_local_prioridade:
                         novo_local = st.text_input("Local", value=evento_dados['local'])
@@ -264,7 +267,7 @@ with tab_visualizar_editar:
                         
                         conectar_sheets.clear()
                         
-                        # Usa o alias 't' para o time.sleep
+                        # Atraso para estabilidade após a exclusão (D)
                         t.sleep(0.5) 
                         
                         st.experimental_rerun()
