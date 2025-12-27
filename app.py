@@ -75,7 +75,8 @@ def adicionar_evento(sheet, dados_do_form):
     ]
     
     sheet.append_row(nova_linha)
-    st.success("🎉 Evento criado. Mais um compromisso para a sua vida. **TROQUE DE ABA ou atualize a página para ver a lista.**") # Mensagem Guia
+    st.success("🎉 Evento criado. Mais um compromisso para a sua vida. **A lista será atualizada automaticamente em 10 segundos.**") 
+    conectar_sheets.clear() # Limpa o cache para garantir que a próxima leitura automática seja fresca.
 
 # U (Update) - Atualiza um evento existente
 def atualizar_evento(sheet, id_evento, novos_dados):
@@ -96,7 +97,8 @@ def atualizar_evento(sheet, id_evento, novos_dados):
         ]
 
         sheet.update(f'A{linha_index}', [valores_atualizados])
-        st.success(f"🔄 Evento {id_evento[:8]}... atualizado com sucesso. Foco nos detalhes. **TROQUE DE ABA ou atualize a página para ver a lista.**") # Mensagem Guia
+        st.success(f"🔄 Evento {id_evento[:8]}... atualizado com sucesso. Foco nos detalhes. **A lista será atualizada automaticamente em 10 segundos.**") 
+        conectar_sheets.clear() # Limpa o cache para garantir que a próxima leitura automática seja fresca.
         return True
 
     except gspread.exceptions.CellNotFound:
@@ -114,7 +116,8 @@ def deletar_evento(sheet, id_evento):
         linha_index = cell.row
 
         sheet.delete_rows(linha_index)
-        st.success(f"🗑️ Evento {id_evento[:8]}... deletado. Férias merecidas para esse compromisso. **TROQUE DE ABA ou atualize a página para ver a lista.**") # Mensagem Guia
+        st.success(f"🗑️ Evento {id_evento[:8]}... deletado. Férias merecidas para esse compromisso. **A lista será atualizada automaticamente em 10 segundos.**") 
+        conectar_sheets.clear() # Limpa o cache para garantir que a próxima leitura automática seja fresca.
         return True
     except gspread.exceptions.CellNotFound:
         st.error(f"🚫 ID de Evento '{id_evento[:8]}...' não encontrado. Impossível apagar algo que não existe.")
@@ -172,9 +175,7 @@ with tab_criar:
                     'status': status_inicial
                 }
                 adicionar_evento(sheet, dados_para_sheet)
-                
-                conectar_sheets.clear() 
-                
+                # Removemos o rerun forçado aqui, pois a própria lista na aba de visualização vai se atualizar.
             else:
                 st.warning("O Título e a Data são obrigatórios. Não complique.")
 
@@ -182,7 +183,11 @@ with tab_criar:
 # === ABA VISUALIZAR E GERENCIAR (R, U, D) ===
 with tab_visualizar_editar:
     
-    st.info("Para atualizar a lista após uma alteração, mude para a aba 'Criar Evento' e volte para cá (ou use F5).")
+    # 📌 NOVO CÓDIGO: POLLING A CADA 10 SEGUNDOS
+    # O Streamlit Cloud vai fazer o rerun a cada 10 segundos enquanto esta aba estiver visível/ativa.
+    # O valor 10000 é em milissegundos.
+    st.info("A lista abaixo está em modo *quase real-time* e se atualiza automaticamente a cada 10 segundos.")
+    st.rerun(interval=10000)
     
     st.header("MEUS EVENTOS")
     
@@ -208,7 +213,6 @@ with tab_visualizar_editar:
             'status': 'Status'
         }, inplace=True)
         
-        # Exibição da tabela principal
         st.dataframe(df_display.sort_values(by='Data', ascending=False), use_container_width=True, hide_index=True)
         
         st.divider()
@@ -216,15 +220,12 @@ with tab_visualizar_editar:
 
         if not df_eventos.empty:
             
-            # Formatação do Selectbox para melhor visualização
             eventos_atuais = df_eventos['id_evento'].tolist()
             
             def formatar_selecao(id_val):
-                # Usar iloc[0] é seguro aqui pois o ID é único
                 titulo = df_eventos[df_eventos['id_evento'] == id_val]['titulo'].iloc[0]
                 return f"{titulo} ({id_val[:4]}...)"
 
-            # Selectbox para seleção do evento
             evento_selecionado_id = st.selectbox(
                 "Selecione o Evento para Ação (Edição/Exclusão):",
                 options=eventos_atuais,
@@ -233,7 +234,6 @@ with tab_visualizar_editar:
             )
         
         if evento_selecionado_id:
-            # Filtra os dados do evento selecionado
             evento_dados = df_eventos[df_eventos['id_evento'] == evento_selecionado_id].iloc[0]
 
             col_u, col_d = st.columns([3, 1])
@@ -247,13 +247,11 @@ with tab_visualizar_editar:
                     col_data_hora, col_local_prioridade = st.columns(2)
 
                     with col_data_hora:
-                        # Conversão para datetime.date para o st.date_input
                         novo_data = st.date_input(
                             "Data", 
                             value=pd.to_datetime(evento_dados['data_evento']).date(),
                             format="DD/MM/YYYY"
                         )
-                        # Conversão de string "HH:MM" para datetime.time
                         novo_hora_str = evento_dados['hora_evento']
                         novo_hora = st.time_input("Hora", value=time(int(novo_hora_str[:2]), int(novo_hora_str[3:])))
                     
@@ -277,15 +275,12 @@ with tab_visualizar_editar:
                             'prioridade': novo_prioridade,
                             'status': novo_status
                         }
-                        if atualizar_evento(sheet, evento_selecionado_id, dados_atualizados):
-                            conectar_sheets.clear()
+                        atualizar_evento(sheet, evento_selecionado_id, dados_atualizados) # A função já limpa o cache e a lista se atualiza sozinha
                             
             
             with col_d:
                 st.markdown("##### Excluir Evento")
                 st.warning(f"Excluindo: **{evento_dados['titulo']}**")
                 
-                # Simulação do Popup de Confirmação (aqui, é um botão simples)
                 if st.button("🔴 EXCLUIR EVENTO (Delete)", type="primary"):
-                    if deletar_evento(sheet, evento_selecionado_id):
-                        conectar_sheets.clear()
+                    deletar_evento(sheet, evento_selecionado_id) # A função já limpa o cache e a lista se atualiza sozinha
