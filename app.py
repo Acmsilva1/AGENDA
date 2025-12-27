@@ -75,7 +75,7 @@ def adicionar_evento(sheet, dados_do_form):
     ]
     
     sheet.append_row(nova_linha)
-    st.success("🎉 Evento criado. Mais um compromisso para a sua vida. **Clique na aba 'Visualizar' para ver a lista atualizada.**") # Mensagem de guia
+    st.success("🎉 Evento criado. Mais um compromisso para a sua vida. **Clique em 'Atualizar Dados' para ver a lista.**") # Mensagem Guia
 
 # U (Update) - Atualiza um evento existente
 def atualizar_evento(sheet, id_evento, novos_dados):
@@ -96,7 +96,7 @@ def atualizar_evento(sheet, id_evento, novos_dados):
         ]
 
         sheet.update(f'A{linha_index}', [valores_atualizados])
-        st.success(f"🔄 Evento {id_evento[:8]}... atualizado com sucesso. Foco nos detalhes. **Clique na aba 'Visualizar' para ver a lista atualizada.**") # Mensagem de guia
+        st.success(f"🔄 Evento {id_evento[:8]}... atualizado com sucesso. Foco nos detalhes. **Clique em 'Atualizar Dados' para ver a lista.**") # Mensagem Guia
         return True
 
     except gspread.exceptions.CellNotFound:
@@ -114,7 +114,7 @@ def deletar_evento(sheet, id_evento):
         linha_index = cell.row
 
         sheet.delete_rows(linha_index)
-        st.success(f"🗑️ Evento {id_evento[:8]}... deletado. Férias merecidas para esse compromisso. **Clique na aba 'Visualizar' para ver a lista atualizada.**") # Mensagem de guia
+        st.success(f"🗑️ Evento {id_evento[:8]}... deletado. Férias merecidas para esse compromisso. **Clique em 'Atualizar Dados' para ver a lista.**") # Mensagem Guia
         return True
     except gspread.exceptions.CellNotFound:
         st.error(f"🚫 ID de Evento '{id_evento[:8]}...' não encontrado. Impossível apagar algo que não existe.")
@@ -131,7 +131,6 @@ st.title("🗓️ Agenda Sarcástica v1.0 (Python/Sheets)")
 
 sheet = conectar_sheets()
 
-# Se a conexão inicial falhar, o script para. 
 if sheet is None:
     st.stop()
 
@@ -174,14 +173,23 @@ with tab_criar:
                 }
                 adicionar_evento(sheet, dados_para_sheet)
                 
-                # 🛑 REMOVIDO: st.experimental_rerun() para evitar o bug interno do Streamlit.
+                # 📌 Ação Essencial: Limpar o cache para que o botão de atualização funcione
                 conectar_sheets.clear() 
+                
+                # st.experimental_rerun() REMOVIDO PARA EVITAR O BUG
             else:
                 st.warning("O Título e a Data são obrigatórios. Não complique.")
 
 
 # === ABA VISUALIZAR E GERENCIAR (R, U, D) ===
 with tab_visualizar_editar:
+    
+    # 📌 NOVO: Botão de Atualização Manual
+    if st.button("🔄 Atualizar Dados", type="secondary"):
+        conectar_sheets.clear()
+        # Este RERUN agora é seguro, pois é a ação PRIMÁRIA do clique.
+        st.experimental_rerun()
+        
     st.header("Seus Eventos Atuais (CRUD)")
     df_eventos = carregar_eventos(sheet) 
     
@@ -268,7 +276,7 @@ with tab_visualizar_editar:
                             
                             conectar_sheets.clear()
                             
-                            # 🛑 REMOVIDO: st.experimental_rerun()
+                            # st.experimental_rerun() REMOVIDO PARA EVITAR O BUG
             
             with col_d:
                 st.markdown("##### Excluir Evento")
@@ -279,4 +287,4 @@ with tab_visualizar_editar:
                         
                         conectar_sheets.clear()
                         
-                        # 🛑 REMOVIDO: st.experimental_rerun()
+                        # st.experimental_rerun() REMOVIDO PARA EVITAR O BUG
