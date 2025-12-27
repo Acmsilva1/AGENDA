@@ -157,7 +157,8 @@ with tab_criar:
         with col2:
             prioridade = st.selectbox("Prioridade:", ["Média", "Alta", "Baixa"])
             hora = st.time_input("Hora:", time(9, 0)) 
-            status_inicial = st.selectbox("Status Inicial:", ['Pendente', 'Rascunho'])
+            # 📌 ALTERAÇÃO 1: Status Inicial
+            status_inicial = st.selectbox("Status Inicial:", ['Pendente', 'Concluído'])
         
         descricao = st.text_area("Descrição Detalhada:")
         
@@ -258,8 +259,11 @@ with tab_visualizar_editar:
                         novo_local = st.text_input("Local", value=evento_dados['local'])
                         opcoes_prioridade = ["Alta", "Média", "Baixa"]
                         novo_prioridade = st.selectbox("Prioridade", opcoes_prioridade, index=opcoes_prioridade.index(evento_dados['prioridade']))
-                        opcoes_status = ['Pendente', 'Concluído', 'Cancelado']
-                        novo_status = st.selectbox("Status", opcoes_status, index=opcoes_status.index(evento_dados['status']))
+                        
+                        # 📌 ALTERAÇÃO 2: Status na Atualização
+                        opcoes_status = ['Pendente', 'Concluído']
+                        novo_status = st.selectbox("Status", opcoes_status, index=opcoes_status.index(evento_dados['status']) if evento_dados['status'] in opcoes_status else 0)
+
 
                     update_button = st.form_submit_button("Salvar Atualizações (Update)")
 
