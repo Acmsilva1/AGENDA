@@ -6,8 +6,9 @@ name: Alerta de Agenda Diário (Cron Job)
 on:
   # Agendamento Automático (CRON JOB)
   schedule:
-    # Roda diariamente às 01h, 09h e 17h UTC (corresponde a 6h, 14h e 22h no Brasil/GMT-3)
-    - cron: '0 1,9,17 * * *' 
+    # 🚨 CRON MODIFICADO: Roda às 09h, 17h e 23h UTC 
+    # (corresponde a 06h, 14h e 20h no Brasil/GMT-3)
+    - cron: '0 9,17,23 * * *' 
   
   # 📌 ATIVAÇÃO MANUAL PARA TESTES
   workflow_dispatch: 
