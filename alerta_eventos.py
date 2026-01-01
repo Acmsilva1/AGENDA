@@ -13,10 +13,13 @@ import asyncio
 TELEGRAM_BOT_TOKEN = os.getenv("TELEGRAM_BOT_TOKEN")
 TELEGRAM_CHAT_ID = os.getenv("TELEGRAM_CHAT_ID")
 
-# ID da Planilha no seu Google Drive (Use o mesmo do app.py)
-# Mantenho o ID de exemplo, mas use o seu ID real
+# ID da Planilha no seu Google Drive
 PLANILHA_ID = "1S54b0QtWYaCAgrDNpdQM7ZG5f_KbYXpDztK5TSOn2vU"
 ABA_NOME = "AGENDA"
+
+# --- CONSTANTE DE GOVERNANÇA (NOVO REQUISITO) ---
+# Alerta sempre 5 dias antes de qualquer evento (a partir de hoje)
+DIAS_DE_ALERTA = 5
 
 # --- FUNÇÕES CORE (Sem Alterações) ---
 
@@ -49,7 +52,9 @@ def carregar_eventos(sheet):
     try:
         dados = sheet.get_all_records()
         df = pd.DataFrame(dados)
-        df['data_evento'] = pd.to_datetime(df['data_evento'], errors='coerce')
+        # Garante que a coluna exista, mas não usaremos seu valor para o filtro.
+        if 'data_evento' in df.columns:
+            df['data_evento'] = pd.to_datetime(df['data_evento'], errors='coerce')
         return df
     except Exception as e:
         print(f"Erro ao carregar eventos: {e}")
@@ -72,7 +77,7 @@ async def enviar_alerta(mensagem):
     except Exception as e:
         print(f"🚨 Erro ao enviar mensagem para o Telegram: {e}")
 
-# --- LÓGICA DO AGENTE DE ALERTA ---
+# --- LÓGICA DO AGENTE DE ALERTA (MODIFICADA) ---
 
 def main_alerta():
     """Função principal que executa a lógica de alerta e notificação."""
@@ -85,70 +90,63 @@ def main_alerta():
     df_eventos = carregar_eventos(sheet)
     
     # 📌 NOVO ALERTA 1: SEM REGISTRO DE EVENTOS (Planilha vazia)
-    if df_eventos.empty:
-        print("Nenhum evento encontrado na planilha.")
+    if df_eventos.empty or 'data_evento' not in df_eventos.columns:
+        print("Nenhum evento ou coluna de data encontrado na planilha.")
         # Frase solicitada: "OLÁ! NÃO HÁ EVENTOS REGISTRADOS!"
         mensagem_vazia = "OLÁ! NÃO HÁ EVENTOS REGISTRADOS!"
         asyncio.run(enviar_alerta(mensagem_vazia))
         return
 
-    # 1. DEFINIÇÃO DE FILTROS DE GOVERNANÇA (LÓGICA ATUALIZADA)
+    # 1. DEFINIÇÃO DO NOVO FILTRO DE ALERTA (GOVERNANÇA SIMPLIFICADA)
     
-    # Define o limite de tempo para Alta Prioridade (Hoje + 7 dias)
     hoje = datetime.now().date()
-    limite_alta_prioridade = hoje + timedelta(days=7)
+    # Limite superior: 5 dias à frente (qualquer evento em até 5 dias)
+    limite_alerta = hoje + timedelta(days=DIAS_DE_ALERTA)
     
-    # Filtro de Alta Prioridade: Pendente, Prioridade Alta E data dentro do limite de 7 dias
-    df_alta_pendente = df_eventos[
-        (df_eventos['prioridade'] == 'Alta') & 
+    # Filtro Simples: Pendente E data do evento de HOJE até o limite de 5 dias
+    df_alerta_5_dias = df_eventos[
         (df_eventos['status'] == 'Pendente') &
-        (df_eventos['data_evento'].dt.date <= limite_alta_prioridade) # ⬅️ NOVO FILTRO DE TEMPO
-    ]
-    
-    # Filtro de Agenda para Amanhã (Permanece com 1 dia)
-    amanha = hoje + timedelta(days=1)
-    df_amanha = df_eventos[
-        (df_eventos['data_evento'].dt.date == amanha) &
-        (df_eventos['status'] == 'Pendente')
-    ]
-    
+        (df_eventos['data_evento'].dt.date >= hoje) & # Não lista eventos passados
+        (df_eventos['data_evento'].dt.date <= limite_alerta) # Dentro da janela de 5 dias
+    ].sort_values(by='data_evento', ascending=True)
+
     # --- CONSTRUÇÃO DA MENSAGEM ---
     
     mensagens = []
     
-    # ALERTA 1: ALTA PRIORIDADE PENDENTE (Mensagem de Alerta)
-    if not df_alta_pendente.empty:
-        msg_alta = "🚨 *PRIORIDADE ALTA PENDENTE (Próximos 7 dias)* 🚨\n"
-        # Garante que ele não liste eventos que já passaram, caso o status não tenha sido atualizado
-        df_alta_pendente_futuro = df_alta_pendente[df_alta_pendente['data_evento'].dt.date >= hoje]
+    # ALERTA ÚNICO: EVENTOS PENDENTES NOS PRÓXIMOS 5 DIAS
+    if not df_alerta_5_dias.empty:
+        # ⚠️ MUDANÇA NO TÍTULO PARA REFLETIR A NOVA REGRA
+        msg_alerta = f"🗓️ *ALERTA DE AGENDA ({DIAS_DE_ALERTA} DIAS)* 🗓️\n"
         
-        for index, row in df_alta_pendente_futuro.head(3).iterrows():
-            msg_alta += f"  - {row['titulo']} (Data: {row['data_evento'].strftime('%d/%m/%Y')})\n"
-        
-        if len(df_alta_pendente_futuro) > 3:
-             msg_alta += f"  ... e mais {len(df_alta_pendente_futuro) - 3} itens de Alta Prioridade.\n"
+        # Lista os 5 primeiros eventos mais próximos
+        for index, row in df_alerta_5_dias.head(5).iterrows():
+             data_formatada = row['data_evento'].strftime('%d/%m/%Y')
+             # Calcula quantos dias faltam para maior clareza na notificação
+             dias_restantes = (row['data_evento'].dt.date - hoje).days
              
-        if df_alta_pendente_futuro.empty:
-             print("Nenhum evento de Alta Prioridade futuro dentro de 7 dias.")
-        else:
-             mensagens.append(msg_alta)
+             if dias_restantes == 0:
+                 dias_info = "HOJE"
+             elif dias_restantes == 1:
+                 dias_info = "AMANHÃ"
+             else:
+                 dias_info = f"em {dias_restantes} dias"
 
+             msg_alerta += f"  - **{row['titulo']}** ({dias_info})\n    _Data: {data_formatada} | Local: {row.get('local', 'N/A')}_\n"
+        
+        if len(df_alerta_5_dias) > 5:
+             msg_alerta += f"  ... e mais {len(df_alerta_5_dias) - 5} eventos pendentes em breve.\n"
+             
+        mensagens.append(msg_alerta)
 
-    # ALERTA 2: EVENTOS DE AMANHÃ (Mensagem de Alerta)
-    if not df_amanha.empty:
-        msg_amanha = "🗓️ *AGENDA DE AMANHÃ* 🗓️\n"
-        for index, row in df_amanha.iterrows():
-            msg_amanha += f"  - {row['titulo']} ({row['hora_evento']}) - Local: {row['local']}\n"
-        mensagens.append(msg_amanha)
-
-    # ALERTA FINAL: SE HOUVE MENSAGEM (URGENTE/AGENDA) OU SE NÃO HOUVE (NADA CONSTA)
+    # ALERTA FINAL: SE HOUVE MENSAGEM (AGENDA) OU SE NÃO HOUVE (NADA CONSTA)
     if mensagens:
         # Se encontrou alertas, envia a lista completa
-        mensagem_final = "🤖 *Relatório de Governança da Agenda*\n\n" + "\n---\n".join(mensagens)
+        mensagem_final = "🤖 *Relatório da Sua Agenda Simplificada*\n\n" + "\n---\n".join(mensagens)
         asyncio.run(enviar_alerta(mensagem_final))
     else:
         # 📌 NOVO ALERTA 2: SEM EVENTOS URGENTES (Planilha com dados, mas filtros vazios)
-        print("Nenhum alerta de alta prioridade ou evento para amanhã. Tudo sob controle.")
+        print("Nenhum evento pendente nos próximos 5 dias. Paz de espírito.")
         # Frase solicitada: "OLÁ! NÃO HÁ EVENTOS URGENTES!"
         mensagem_nada_consta = "OLÁ! NÃO HÁ EVENTOS URGENTES!"
         asyncio.run(enviar_alerta(mensagem_nada_consta))
