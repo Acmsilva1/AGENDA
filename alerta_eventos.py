@@ -52,7 +52,7 @@ def carregar_eventos(sheet):
     try:
         dados = sheet.get_all_records()
         df = pd.DataFrame(dados)
-        # Garante que a coluna exista, mas não usaremos seu valor para o filtro.
+        # Garante que a coluna 'data_evento' seja um objeto datetime para filtros
         if 'data_evento' in df.columns:
             df['data_evento'] = pd.to_datetime(df['data_evento'], errors='coerce')
         return df
@@ -89,25 +89,23 @@ def main_alerta():
 
     df_eventos = carregar_eventos(sheet)
     
-    # 📌 NOVO ALERTA 1: SEM REGISTRO DE EVENTOS (Planilha vazia)
+    # NOVO ALERTA 1: SEM REGISTRO DE EVENTOS (Planilha vazia)
     if df_eventos.empty or 'data_evento' not in df_eventos.columns:
         print("Nenhum evento ou coluna de data encontrado na planilha.")
-        # Frase solicitada: "OLÁ! NÃO HÁ EVENTOS REGISTRADOS!"
         mensagem_vazia = "OLÁ! NÃO HÁ EVENTOS REGISTRADOS!"
         asyncio.run(enviar_alerta(mensagem_vazia))
         return
 
-    # 1. DEFINIÇÃO DO NOVO FILTRO DE ALERTA (GOVERNANÇA SIMPLIFICADA)
+    # 1. DEFINIÇÃO DO NOVO FILTRO DE ALERTA (5 DIAS)
     
     hoje = datetime.now().date()
-    # Limite superior: 5 dias à frente (qualquer evento em até 5 dias)
     limite_alerta = hoje + timedelta(days=DIAS_DE_ALERTA)
     
-    # Filtro Simples: Pendente E data do evento de HOJE até o limite de 5 dias
+    # Filtro: Status Pendente E data do evento de HOJE até o limite de 5 dias
     df_alerta_5_dias = df_eventos[
         (df_eventos['status'] == 'Pendente') &
-        (df_eventos['data_evento'].dt.date >= hoje) & # Não lista eventos passados
-        (df_eventos['data_evento'].dt.date <= limite_alerta) # Dentro da janela de 5 dias
+        (df_eventos['data_evento'].dt.date >= hoje) & 
+        (df_eventos['data_evento'].dt.date <= limite_alerta)
     ].sort_values(by='data_evento', ascending=True)
 
     # --- CONSTRUÇÃO DA MENSAGEM ---
@@ -116,13 +114,11 @@ def main_alerta():
     
     # ALERTA ÚNICO: EVENTOS PENDENTES NOS PRÓXIMOS 5 DIAS
     if not df_alerta_5_dias.empty:
-        # ⚠️ MUDANÇA NO TÍTULO PARA REFLETIR A NOVA REGRA
         msg_alerta = f"🗓️ *ALERTA DE AGENDA ({DIAS_DE_ALERTA} DIAS)* 🗓️\n"
         
         # Lista os 5 primeiros eventos mais próximos
         for index, row in df_alerta_5_dias.head(5).iterrows():
              data_formatada = row['data_evento'].strftime('%d/%m/%Y')
-             # Calcula quantos dias faltam para maior clareza na notificação
              dias_restantes = (row['data_evento'].dt.date - hoje).days
              
              if dias_restantes == 0:
@@ -139,15 +135,13 @@ def main_alerta():
              
         mensagens.append(msg_alerta)
 
-    # ALERTA FINAL: SE HOUVE MENSAGEM (AGENDA) OU SE NÃO HOUVE (NADA CONSTA)
+    # ALERTA FINAL: SE HOUVE MENSAGEM OU NADA CONSTA
     if mensagens:
-        # Se encontrou alertas, envia a lista completa
         mensagem_final = "🤖 *Relatório da Sua Agenda Simplificada*\n\n" + "\n---\n".join(mensagens)
         asyncio.run(enviar_alerta(mensagem_final))
     else:
-        # 📌 NOVO ALERTA 2: SEM EVENTOS URGENTES (Planilha com dados, mas filtros vazios)
+        # NOVO ALERTA 2: SEM EVENTOS URGENTES
         print("Nenhum evento pendente nos próximos 5 dias. Paz de espírito.")
-        # Frase solicitada: "OLÁ! NÃO HÁ EVENTOS URGENTES!"
         mensagem_nada_consta = "OLÁ! NÃO HÁ EVENTOS URGENTES!"
         asyncio.run(enviar_alerta(mensagem_nada_consta))
 
