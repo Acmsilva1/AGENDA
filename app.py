@@ -8,7 +8,7 @@ from streamlit_autorefresh import st_autorefresh
 
 # --- CONFIGURAÇÕES DO PROJETO ---
 
-# ID da Planilha no seu Google Drive
+# ID da Planilha no seu Google Drive (Mantenha o mesmo)
 PLANILHA_ID = "1S54b0QtWYaCAgrDNpdQM7ZG5f_KbYXpDztK5TSOn2vU"
 ABA_NOME = "AGENDA"
 
@@ -64,6 +64,7 @@ def carregar_eventos(sheet):
 def adicionar_evento(sheet, dados_do_form):
     """Insere uma nova linha de evento no Sheets."""
     
+    # ⚠️ REMOVIDA A COLUNA 'PRIORIDADE'
     nova_linha = [
         dados_do_form.get('id_evento'),
         dados_do_form.get('titulo'),
@@ -71,7 +72,9 @@ def adicionar_evento(sheet, dados_do_form):
         dados_do_form.get('data_evento'),
         dados_do_form.get('hora_evento'),
         dados_do_form.get('local'),
-        dados_do_form.get('prioridade'),
+        # O campo 'prioridade' deve ser removido da sua planilha ou mantido como um valor fixo.
+        # POR GOVERNANÇA E PADRONIZAÇÃO DA PLANILHA, VOU INSERIR UM VALOR VAZIO ('') AQUI.
+        '', # <--- Espaço reservado para a coluna 'prioridade' que deve ser ignorada
         dados_do_form.get('status')
     ]
     
@@ -86,6 +89,7 @@ def atualizar_evento(sheet, id_evento, novos_dados):
         cell = sheet.find(id_evento)
         linha_index = cell.row 
 
+        # ⚠️ REMOVIDA A COLUNA 'PRIORIDADE'
         valores_atualizados = [
             novos_dados['id_evento'],
             novos_dados['titulo'],
@@ -93,7 +97,7 @@ def atualizar_evento(sheet, id_evento, novos_dados):
             novos_dados['data_evento'],
             novos_dados['hora_evento'],
             novos_dados['local'],
-            novos_dados['prioridade'],
+            '', # <--- Espaço reservado para a coluna 'prioridade'
             novos_dados['status']
         ]
 
@@ -151,7 +155,8 @@ with st.form("form_novo_evento", clear_on_submit=True):
         data = st.date_input("Data:", date.today(), format="DD/MM/YYYY") 
     
     with col2:
-        prioridade = st.selectbox("Prioridade:", ["Média", "Alta", "Baixa"])
+        # ❌ REMOÇÃO DA PRIORIDADE
+        # prioridade = st.selectbox("Prioridade:", ["Média", "Alta", "Baixa"])
         hora = st.time_input("Hora:", time(9, 0)) 
         status_inicial = st.selectbox("Status Inicial:", ['Pendente', 'Rascunho'])
     
@@ -168,7 +173,7 @@ with st.form("form_novo_evento", clear_on_submit=True):
                 'data_evento': data.strftime('%Y-%m-%d'), 
                 'hora_evento': hora.strftime('%H:%M'),
                 'local': local,
-                'prioridade': prioridade,
+                # 'prioridade': prioridade, # ❌ REMOVIDO DA CAPTURA
                 'status': status_inicial
             }
             adicionar_evento(sheet, dados_para_sheet)
@@ -198,6 +203,7 @@ else:
     if 'data_evento' in df_display.columns:
         df_display['data_evento'] = pd.to_datetime(df_display['data_evento'], errors='coerce').dt.strftime('%d/%m/%Y')
     
+    # ⚠️ MANTIVE A COLUNA 'Prioridade' na renomeação caso a planilha ainda a tenha, mas ela será ignorada na visualização.
     df_display.rename(columns={
         'id_evento': 'ID', 
         'titulo': 'Título', 
@@ -205,7 +211,7 @@ else:
         'hora_evento': 'Hora',
         'descricao': 'Descrição',
         'local': 'Local',
-        'prioridade': 'Prioridade',
+        'prioridade': 'Prioridade (Ignorada)', # 🔄 RENOMEADA PARA CLAREZA
         'status': 'Status'
     }, inplace=True)
     
@@ -219,7 +225,8 @@ else:
         eventos_atuais = df_eventos['id_evento'].tolist()
         
         def formatar_selecao(id_val):
-            titulo = df_eventos[df_eventos['id_evento'] == id_val]['titulo'].iloc[0]
+            # Adiciona uma checagem para 'titulo' existir, pois a planilha pode estar inconsistente
+            titulo = df_eventos[df_eventos['id_evento'] == id_val]['titulo'].iloc[0] if 'titulo' in df_eventos.columns else "Evento Sem Título"
             return f"{titulo} ({id_val[:4]}...)"
 
         evento_selecionado_id = st.selectbox(
@@ -240,7 +247,7 @@ else:
                 novo_titulo = st.text_input("TÍTULO DO EVENTO", value=evento_dados['titulo'])
                 nova_descricao = st.text_area("Descrição", value=evento_dados['descricao'])
 
-                col_data_hora, col_local_prioridade = st.columns(2)
+                col_data_hora, col_local_status = st.columns(2) # 🔄 RENOMEADO PARA REFLETIR MUDANÇA
 
                 with col_data_hora:
                     novo_data = st.date_input(
@@ -248,13 +255,19 @@ else:
                         value=pd.to_datetime(evento_dados['data_evento']).date(),
                         format="DD/MM/YYYY"
                     )
+                    # Tratamento de segurança para hora
                     novo_hora_str = evento_dados['hora_evento']
-                    novo_hora = st.time_input("Hora", value=time(int(novo_hora_str[:2]), int(novo_hora_str[3:])))
+                    try:
+                        novo_hora = st.time_input("Hora", value=time(int(novo_hora_str[:2]), int(novo_hora_str[3:])))
+                    except:
+                        # Fallback seguro para hora inválida
+                        novo_hora = st.time_input("Hora (Valor Padrão)", value=time(9, 0)) 
                 
-                with col_local_prioridade:
+                with col_local_status: # 🔄 MUDANÇA NA COLUNA
                     novo_local = st.text_input("Local", value=evento_dados['local'])
-                    opcoes_prioridade = ["Alta", "Média", "Baixa"]
-                    novo_prioridade = st.selectbox("Prioridade", opcoes_prioridade, index=opcoes_prioridade.index(evento_dados['prioridade']))
+                    # ❌ REMOÇÃO DO CAMPO DE PRIORIDADE
+                    # opcoes_prioridade = ["Alta", "Média", "Baixa"]
+                    # novo_prioridade = st.selectbox("Prioridade", opcoes_prioridade, index=opcoes_prioridade.index(evento_dados['prioridade']))
                     opcoes_status = ['Pendente', 'Concluído', 'Cancelado']
                     novo_status = st.selectbox("Status", opcoes_status, index=opcoes_status.index(evento_dados['status']))
 
@@ -268,7 +281,7 @@ else:
                         'data_evento': novo_data.strftime('%Y-%m-%d'),
                         'hora_evento': novo_hora.strftime('%H:%M'),
                         'local': novo_local,
-                        'prioridade': novo_prioridade,
+                        # 'prioridade': evento_dados['prioridade'], # ❌ REMOVIDO DO DICIONÁRIO
                         'status': novo_status
                     }
                     atualizar_evento(sheet, evento_selecionado_id, dados_atualizados)
