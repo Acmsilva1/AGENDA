@@ -8,7 +8,7 @@ from streamlit_autorefresh import st_autorefresh
 
 # --- CONFIGURAÇÕES DO PROJETO ---
 
-# ID da Planilha no seu Google Drive (Mantenha o mesmo)
+# ID da Planilha no seu Google Drive
 PLANILHA_ID = "1S54b0QtWYaCAgrDNpdQM7ZG5f_KbYXpDztK5TSOn2vU"
 ABA_NOME = "AGENDA"
 
@@ -64,7 +64,7 @@ def carregar_eventos(sheet):
 def adicionar_evento(sheet, dados_do_form):
     """Insere uma nova linha de evento no Sheets."""
     
-    # ⚠️ REMOVIDA A COLUNA 'PRIORIDADE'
+    # 🎯 CORREÇÃO: AGORA SÃO APENAS 7 ITENS PARA EVITAR DESALINHAMENTO
     nova_linha = [
         dados_do_form.get('id_evento'),
         dados_do_form.get('titulo'),
@@ -72,14 +72,11 @@ def adicionar_evento(sheet, dados_do_form):
         dados_do_form.get('data_evento'),
         dados_do_form.get('hora_evento'),
         dados_do_form.get('local'),
-        # O campo 'prioridade' deve ser removido da sua planilha ou mantido como um valor fixo.
-        # POR GOVERNANÇA E PADRONIZAÇÃO DA PLANILHA, VOU INSERIR UM VALOR VAZIO ('') AQUI.
-        '', # <--- Espaço reservado para a coluna 'prioridade' que deve ser ignorada
         dados_do_form.get('status')
     ]
     
     sheet.append_row(nova_linha)
-    st.success("🎉 Evento criado. Mais um compromisso para a sua vida. **A lista abaixo será atualizada automaticamente em 20 segundos.**") # Ajuste na mensagem
+    st.success("🎉 Evento criado. Mais um compromisso para a sua vida. **A lista abaixo será atualizada automaticamente em 20 segundos.**")
     conectar_sheets.clear()
 
 # U (Update) - Atualiza um evento existente
@@ -89,7 +86,7 @@ def atualizar_evento(sheet, id_evento, novos_dados):
         cell = sheet.find(id_evento)
         linha_index = cell.row 
 
-        # ⚠️ REMOVIDA A COLUNA 'PRIORIDADE'
+        # 🎯 CORREÇÃO: AGORA SÃO APENAS 7 ITENS PARA EVITAR DESALINHAMENTO
         valores_atualizados = [
             novos_dados['id_evento'],
             novos_dados['titulo'],
@@ -97,12 +94,11 @@ def atualizar_evento(sheet, id_evento, novos_dados):
             novos_dados['data_evento'],
             novos_dados['hora_evento'],
             novos_dados['local'],
-            '', # <--- Espaço reservado para a coluna 'prioridade'
             novos_dados['status']
         ]
 
         sheet.update(f'A{linha_index}', [valores_atualizados])
-        st.success(f"🔄 Evento {id_evento[:8]}... atualizado com sucesso. Foco nos detalhes. **A lista abaixo será atualizada automaticamente em 20 segundos.**") # Ajuste na mensagem
+        st.success(f"🔄 Evento {id_evento[:8]}... atualizado com sucesso. Foco nos detalhes. **A lista abaixo será atualizada automaticamente em 20 segundos.**")
         conectar_sheets.clear()
         return True
 
@@ -121,7 +117,7 @@ def deletar_evento(sheet, id_evento):
         linha_index = cell.row
 
         sheet.delete_rows(linha_index)
-        st.success(f"🗑️ Evento {id_evento[:8]}... deletado. Férias merecidas para esse compromisso. **A lista abaixo será atualizada automaticamente em 20 segundos.**") # Ajuste na mensagem
+        st.success(f"🗑️ Evento {id_evento[:8]}... deletado. Férias merecidas para esse compromisso. **A lista abaixo será atualizada automaticamente em 20 segundos.**")
         conectar_sheets.clear()
         return True
     except gspread.exceptions.CellNotFound:
@@ -135,7 +131,7 @@ def deletar_evento(sheet, id_evento):
 # --- INTERFACE STREAMLIT (UI) - TELA ÚNICA ---
 
 st.set_page_config(layout="wide")
-st.title("🗓️ AGENDA DE EVENTOS")
+st.title("🗓️ AGENDA DE EVENTOS (Prioridade Simplificada)")
 
 sheet = conectar_sheets()
 
@@ -155,8 +151,7 @@ with st.form("form_novo_evento", clear_on_submit=True):
         data = st.date_input("Data:", date.today(), format="DD/MM/YYYY") 
     
     with col2:
-        # ❌ REMOÇÃO DA PRIORIDADE
-        # prioridade = st.selectbox("Prioridade:", ["Média", "Alta", "Baixa"])
+        # ❌ REMOÇÃO DO CAMPO PRIORIDADE
         hora = st.time_input("Hora:", time(9, 0)) 
         status_inicial = st.selectbox("Status Inicial:", ['Pendente', 'Rascunho'])
     
@@ -166,6 +161,7 @@ with st.form("form_novo_evento", clear_on_submit=True):
 
     if submit_button:
         if titulo and data: 
+            # 🎯 CORREÇÃO: REMOÇÃO DA CHAVE 'prioridade'
             dados_para_sheet = {
                 'id_evento': str(uuid.uuid4()),
                 'titulo': titulo,
@@ -173,7 +169,7 @@ with st.form("form_novo_evento", clear_on_submit=True):
                 'data_evento': data.strftime('%Y-%m-%d'), 
                 'hora_evento': hora.strftime('%H:%M'),
                 'local': local,
-                # 'prioridade': prioridade, # ❌ REMOVIDO DA CAPTURA
+                # 'prioridade': 'Alta', # REMOVIDO
                 'status': status_inicial
             }
             adicionar_evento(sheet, dados_para_sheet)
@@ -182,11 +178,10 @@ with st.form("form_novo_evento", clear_on_submit=True):
             st.warning("O Título e a Data são obrigatórios. Não complique.")
             
 
-st.divider() # Adicionado para separar visualmente o formulário da tabela
+st.divider()
 
 # === SEÇÃO 2: VISUALIZAR E GERENCIAR (R, U, D) ===
 
-# MODIFICAÇÃO: AUMENTAR REFRESH PARA 20000ms (20 segundos)
 st_autorefresh(interval=20000, key="data_refresh_key")
 st.info("🔄 **ATUALIZAÇÃO AUTOMÁTICA** (A cada 20 segundos)")
 
@@ -203,7 +198,10 @@ else:
     if 'data_evento' in df_display.columns:
         df_display['data_evento'] = pd.to_datetime(df_display['data_evento'], errors='coerce').dt.strftime('%d/%m/%Y')
     
-    # ⚠️ MANTIVE A COLUNA 'Prioridade' na renomeação caso a planilha ainda a tenha, mas ela será ignorada na visualização.
+    # ⚠️ A coluna 'prioridade' deve ter sido excluída da planilha. Se ainda existir, remova-a da exibição.
+    if 'prioridade' in df_display.columns:
+        df_display.drop(columns=['prioridade'], inplace=True)
+    
     df_display.rename(columns={
         'id_evento': 'ID', 
         'titulo': 'Título', 
@@ -211,7 +209,6 @@ else:
         'hora_evento': 'Hora',
         'descricao': 'Descrição',
         'local': 'Local',
-        'prioridade': 'Prioridade (Ignorada)', # 🔄 RENOMEADA PARA CLAREZA
         'status': 'Status'
     }, inplace=True)
     
@@ -225,8 +222,11 @@ else:
         eventos_atuais = df_eventos['id_evento'].tolist()
         
         def formatar_selecao(id_val):
-            # Adiciona uma checagem para 'titulo' existir, pois a planilha pode estar inconsistente
-            titulo = df_eventos[df_eventos['id_evento'] == id_val]['titulo'].iloc[0] if 'titulo' in df_eventos.columns else "Evento Sem Título"
+            # Adiciona checagem se o ID está presente
+            if id_val not in df_eventos['id_evento'].values:
+                return f"Evento Inválido ({id_val[:4]}...)"
+                
+            titulo = df_eventos[df_eventos['id_evento'] == id_val]['titulo'].iloc[0]
             return f"{titulo} ({id_val[:4]}...)"
 
         evento_selecionado_id = st.selectbox(
@@ -247,7 +247,7 @@ else:
                 novo_titulo = st.text_input("TÍTULO DO EVENTO", value=evento_dados['titulo'])
                 nova_descricao = st.text_area("Descrição", value=evento_dados['descricao'])
 
-                col_data_hora, col_local_status = st.columns(2) # 🔄 RENOMEADO PARA REFLETIR MUDANÇA
+                col_data_hora, col_local_status = st.columns(2)
 
                 with col_data_hora:
                     novo_data = st.date_input(
@@ -255,25 +255,23 @@ else:
                         value=pd.to_datetime(evento_dados['data_evento']).date(),
                         format="DD/MM/YYYY"
                     )
-                    # Tratamento de segurança para hora
                     novo_hora_str = evento_dados['hora_evento']
                     try:
+                        # Garante que a hora seja carregada corretamente
                         novo_hora = st.time_input("Hora", value=time(int(novo_hora_str[:2]), int(novo_hora_str[3:])))
                     except:
-                        # Fallback seguro para hora inválida
                         novo_hora = st.time_input("Hora (Valor Padrão)", value=time(9, 0)) 
                 
-                with col_local_status: # 🔄 MUDANÇA NA COLUNA
+                with col_local_status:
                     novo_local = st.text_input("Local", value=evento_dados['local'])
                     # ❌ REMOÇÃO DO CAMPO DE PRIORIDADE
-                    # opcoes_prioridade = ["Alta", "Média", "Baixa"]
-                    # novo_prioridade = st.selectbox("Prioridade", opcoes_prioridade, index=opcoes_prioridade.index(evento_dados['prioridade']))
                     opcoes_status = ['Pendente', 'Concluído', 'Cancelado']
                     novo_status = st.selectbox("Status", opcoes_status, index=opcoes_status.index(evento_dados['status']))
 
                 update_button = st.form_submit_button("Salvar Atualizações (Update)")
 
                 if update_button:
+                    # 🎯 CORREÇÃO: REMOÇÃO DA CHAVE 'prioridade'
                     dados_atualizados = {
                         'id_evento': evento_selecionado_id, 
                         'titulo': novo_titulo,
@@ -281,7 +279,6 @@ else:
                         'data_evento': novo_data.strftime('%Y-%m-%d'),
                         'hora_evento': novo_hora.strftime('%H:%M'),
                         'local': novo_local,
-                        # 'prioridade': evento_dados['prioridade'], # ❌ REMOVIDO DO DICIONÁRIO
                         'status': novo_status
                     }
                     atualizar_evento(sheet, evento_selecionado_id, dados_atualizados)
