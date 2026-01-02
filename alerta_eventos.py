@@ -17,7 +17,7 @@ TELEGRAM_CHAT_ID = os.getenv("TELEGRAM_CHAT_ID")
 PLANILHA_ID = "1S54b0QtWYaCAgrDNpdQM7ZG5f_KbYXpDztK5TSOn2vU"
 ABA_NOME = "AGENDA"
 
-# --- CONSTANTE DE GOVERNANÇA (NOVO REQUISITO) ---
+# --- CONSTANTE DE GOVERNANÇA (REQUISITO FINAL) ---
 # Alerta sempre 5 dias antes de qualquer evento (a partir de hoje)
 DIAS_DE_ALERTA = 5
 
@@ -119,7 +119,9 @@ def main_alerta():
         # Lista os 5 primeiros eventos mais próximos
         for index, row in df_alerta_5_dias.head(5).iterrows():
              data_formatada = row['data_evento'].strftime('%d/%m/%Y')
-             dias_restantes = (row['data_evento'].dt.date - hoje).days
+             
+             # 🛠️ CORREÇÃO DE BUG (Remove .dt)
+             dias_restantes = (row['data_evento'].date() - hoje).days
              
              if dias_restantes == 0:
                  dias_info = "HOJE"
@@ -141,7 +143,7 @@ def main_alerta():
         asyncio.run(enviar_alerta(mensagem_final))
     else:
         # NOVO ALERTA 2: SEM EVENTOS URGENTES
-        print("Nenhum evento pendente nos próximos 5 dias. Paz de espírito.")
+        print(f"Nenhum evento pendente nos próximos {DIAS_DE_ALERTA} dias. Paz de espírito.")
         mensagem_nada_consta = "OLÁ! NÃO HÁ EVENTOS URGENTES!"
         asyncio.run(enviar_alerta(mensagem_nada_consta))
 
