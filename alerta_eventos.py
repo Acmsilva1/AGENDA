@@ -71,8 +71,7 @@ async def enviar_alerta(mensagem):
         await bot.send_message(
             chat_id=TELEGRAM_CHAT_ID, 
             text=mensagem, 
-            parse_mode='Markdown',
-            timeout=20# Usa Markdown para negrito, etc.
+            parse_mode='Markdown' # Usa Markdown para negrito, etc.
         )
         print("🎉 Alerta enviado com sucesso para o Telegram!")
     except Exception as e:
