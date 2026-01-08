@@ -4,7 +4,6 @@ import pandas as pd
 import uuid
 from datetime import date, time, datetime
 import time as t 
-# from streamlit_autorefresh import st_autorefresh # ❌ REMOVIDO: Sem refresh automático!
 
 # --- CONFIGURAÇÕES DO PROJETO ---
 # ID da Planilha no seu Google Drive
@@ -19,10 +18,10 @@ STATUS_PRIORITY_MAP = {
 }
 
 # =================================================================
-# === FUNÇÕES DE CONEXÃO E GOVERNANÇA (REUSADAS) ===
+# === FUNÇÕES DE CONEXÃO E GOVERNANÇA ===
 # =================================================================
 
-# Mantida a lógica de cache e retentativa (governança)
+# Conexão (Recurso Cacheado: Armazena o objeto de conexão Sheets por 1 hora)
 @st.cache_resource(ttl=3600)
 def conectar_sheets_resource():
     """Tenta conectar ao Google Sheets usando Streamlit Secrets com lógica de Retentativa."""
@@ -30,7 +29,6 @@ def conectar_sheets_resource():
     
     for attempt in range(MAX_RETRIES):
         try:
-            # st.secrets["gspread"] foi movido para o recurso (resource cache)
             gc = gspread.service_account_from_dict(st.secrets["gspread"])
             spreadsheet = gc.open_by_key(PLANILHA_ID)
             st.sidebar.success("✅ Conexão com Google Sheets estabelecida.")
@@ -47,31 +45,35 @@ def conectar_sheets_resource():
     return None
 
 # R (Read) - Lê todos os eventos com cache de 10 segundos
+# 🚨 CORREÇÃO DO ERRO: UnhashableParamError
+# A função não recebe mais o objeto 'spreadsheet' (não hasheável) como parâmetro.
+# Ela chama a conexão internamente, dependendo apenas do estado global (e implícito) do cache.
 @st.cache_data(ttl=10)
-def carregar_eventos(spreadsheet):
+def carregar_eventos(): 
     """Lê todos os registros (ignorando o cabeçalho) e retorna como DataFrame."""
+    
+    # Chamando o recurso cacheado internamente
+    spreadsheet = conectar_sheets_resource() 
     
     if spreadsheet is None:
          return pd.DataFrame()
          
     try:
         sheet = spreadsheet.worksheet(ABA_NOME)
-        # Forçando o valor como texto simples para evitar formatações de data/hora do Sheets
         dados = sheet.get_all_records(
              value_render_option='UNFORMATTED_VALUE', 
              head=1 
         )
         df = pd.DataFrame(dados)
         
-        # Correção e Padronização de Colunas
+        # Correção e Padronização de Colunas para ordenação
         if not df.empty and 'data_evento' in df.columns and 'hora_evento' in df.columns:
-            # Converte data para datetime para ordenação correta
             df['data_hora_ordenacao'] = pd.to_datetime(
                 df['data_evento'].astype(str) + ' ' + df['hora_evento'].astype(str),
                 errors='coerce'
             )
             df = df.dropna(subset=['data_hora_ordenacao']).copy()
-            df['Ordem_Status'] = df['status'].map(STATUS_PRIORITY_MAP).fillna(99) # 99 para status desconhecido
+            df['Ordem_Status'] = df['status'].map(STATUS_PRIORITY_MAP).fillna(99) 
         
         return df
 
@@ -85,7 +87,6 @@ def adicionar_evento(spreadsheet, dados_do_form):
     try:
         sheet = spreadsheet.worksheet(ABA_NOME)
         
-        # Garantindo a ordem exata das 7 colunas (conforme seu código original 'app.py')
         colunas = ['id_evento', 'titulo', 'descricao', 'data_evento', 'hora_evento', 'local', 'status']
         nova_linha = [dados_do_form.get(col) for col in colunas]
         
@@ -108,7 +109,6 @@ def atualizar_evento(spreadsheet, id_evento, novos_dados):
         colunas = ['id_evento', 'titulo', 'descricao', 'data_evento', 'hora_evento', 'local', 'status']
         valores_atualizados = [novos_dados.get(col) for col in colunas]
 
-        # Atualiza a linha inteira a partir da coluna A
         sheet.update(f'A{linha_index}', [valores_atualizados], value_input_option='USER_ENTERED')
         st.success(f"🔄 Evento {id_evento[:8]}... atualizado. **Recarregando dados...**")
         carregar_eventos.clear() # LIMPA O CACHE
@@ -147,13 +147,13 @@ def deletar_evento(spreadsheet, id_evento):
 
 st.set_page_config(layout="wide", page_title="Agenda de Eventos")
 
-st.title("🗓️ **Agenda de Eventos** (Transplantada do Controle Financeiro)")
+st.title("🗓️ **Agenda de Eventos** (Refatorada)")
 
 # Inicialização do Estado para o modo de Edição Inline
 if 'id_edicao_ativa_agenda' not in st.session_state:
     st.session_state['id_edicao_ativa_agenda'] = None
 
-# Conexão
+# Conexão (Necessário para o CRUD e para verificar o status antes de prosseguir)
 spreadsheet = conectar_sheets_resource()
 if spreadsheet is None:
     st.stop() 
@@ -170,7 +170,8 @@ with st.sidebar:
 
 
 # Carregamento de Dados (Cacheado)
-df_eventos = carregar_eventos(spreadsheet) 
+# 🎯 CORREÇÃO: Chamada sem o parâmetro 'spreadsheet' para evitar UnhashableParamError.
+df_eventos = carregar_eventos() 
 
 # === SEÇÃO 1: CRIAR NOVO EVENTO ===
 st.header("📥 Registrar Novo Evento")
@@ -185,8 +186,8 @@ with st.form("form_novo_evento", clear_on_submit=True):
     
     with col2:
         hora = st.time_input("Hora:", time(9, 0)) 
-        status_inicial = st.selectbox("Status Inicial:", ['Pendente', 'Rascunho']) # Mantido 'Rascunho' como opção inicial, mas 'Pendente' será o padrão na maioria
-        st.markdown("---") # Espaçamento para alinhamento
+        status_inicial = st.selectbox("Status Inicial:", ['Pendente', 'Rascunho']) 
+        st.markdown("---") 
     
     descricao = st.text_area("Descrição Detalhada:")
     
@@ -198,13 +199,13 @@ with st.form("form_novo_evento", clear_on_submit=True):
                 'id_evento': str(uuid.uuid4()),
                 'titulo': titulo,
                 'descricao': descricao,
-                'data_evento': data.strftime('%Y-%m-%d'), # Formato ISO para Sheets
+                'data_evento': data.strftime('%Y-%m-%d'), 
                 'hora_evento': hora.strftime('%H:%M'),
                 'local': local,
-                'status': status_inicial if status_inicial != 'Rascunho' else 'Pendente' # Força 'Pendente' se for Rascunho
+                'status': status_inicial if status_inicial != 'Rascunho' else 'Pendente' 
             }
             adicionar_evento(spreadsheet, dados_para_sheet)
-            st.rerun() # Recarrega para mostrar o novo dado
+            st.rerun() 
         else:
             st.warning("O Título e a Data são obrigatórios. Não complique.")
             
@@ -220,12 +221,12 @@ if df_eventos.empty:
     st.info("Sem eventos válidos para exibição.")
 else:
     
-    # 3. Ordem de Registro: 1 - PENDENTE, 2 - CONCLUIDO
+    # 3. Ordem de Registro: 1 - PENDENTE, 2 - CONCLUIDO (Implementado no carregar_eventos)
     df_display = df_eventos.copy().sort_values(
         by=['Ordem_Status', 'data_hora_ordenacao'], 
         ascending=[
-            True,  # Ordem_Status (1=Pendente, 2=Concluído)
-            True   # Data e Hora (Mais Antigo Primeiro)
+            True,  
+            True   
         ]
     )
     
@@ -293,7 +294,6 @@ else:
                 
                 novo_hora_str = transacao_dados['hora_evento']
                 try:
-                    # Garante que a hora seja carregada corretamente
                     novo_hora = col_upd_4.time_input("Hora", value=time(int(novo_hora_str[:2]), int(novo_hora_str[3:])), key=f'ut_hora_ag_{id_evento}')
                 except:
                     novo_hora = col_upd_4.time_input("Hora (Padrão 09:00)", value=time(9, 0), key=f'ut_hora_ag_{id_evento}') 
@@ -335,7 +335,7 @@ else:
                 st.session_state.id_edicao_ativa_agenda = None
                 st.rerun()
 
-            st.markdown("---") # Separador para o formulário de edição
+            st.markdown("---") 
 
 
 with st.sidebar:
