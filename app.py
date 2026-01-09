@@ -45,12 +45,13 @@ def conectar_sheets_resource():
     return None
 
 # R (Read) - Lê todos os eventos com cache de 10 segundos
-# 🚨 CORREÇÃO DO ERRO: UnhashableParamError
-# A função não recebe mais o objeto 'spreadsheet' (não hasheável) como parâmetro.
-# Ela chama a conexão internamente, dependendo apenas do estado global (e implícito) do cache.
+# 🎯 ATUALIZAÇÃO: Adicionando 'force_reload' como argumento para governar o cache.
 @st.cache_data(ttl=10)
-def carregar_eventos(): 
+def carregar_eventos(force_reload=False): 
     """Lê todos os registros (ignorando o cabeçalho) e retorna como DataFrame."""
+    
+    # O argumento force_reload (mesmo sem ser usado no corpo) altera o hash da função,
+    # forçando uma nova leitura se o valor for diferente da última execução.
     
     # Chamando o recurso cacheado internamente
     spreadsheet = conectar_sheets_resource() 
@@ -93,6 +94,7 @@ def adicionar_evento(spreadsheet, dados_do_form):
         sheet.append_row(nova_linha, value_input_option='USER_ENTERED')
         st.success("🎉 Evento criado. **Recarregando dados...**")
         carregar_eventos.clear() # LIMPA O CACHE
+        st.session_state['needs_reload'] = True # 🎯 NOVO: Força a recarga na próxima execução
         return True
     except Exception as e:
         st.error(f"Erro ao adicionar evento: {e}")
@@ -112,6 +114,7 @@ def atualizar_evento(spreadsheet, id_evento, novos_dados):
         sheet.update(f'A{linha_index}', [valores_atualizados], value_input_option='USER_ENTERED')
         st.success(f"🔄 Evento {id_evento[:8]}... atualizado. **Recarregando dados...**")
         carregar_eventos.clear() # LIMPA O CACHE
+        st.session_state['needs_reload'] = True # 🎯 NOVO: Força a recarga na próxima execução
         return True
 
     except gspread.exceptions.CellNotFound:
@@ -132,6 +135,7 @@ def deletar_evento(spreadsheet, id_evento):
         sheet.delete_rows(linha_index)
         st.success(f"🗑️ Evento {id_evento[:8]}... deletado. **Recarregando dados...**")
         carregar_eventos.clear() # LIMPA O CACHE
+        st.session_state['needs_reload'] = True # 🎯 NOVO: Força a recarga na próxima execução
         return True
     except gspread.exceptions.CellNotFound:
         st.error(f"🚫 ID de Evento '{id_evento[:8]}...' não encontrado.")
@@ -149,9 +153,13 @@ st.set_page_config(layout="wide", page_title="Agenda de Eventos")
 
 st.title("🗓️ **Agenda de Eventos** (Refatorada)")
 
-# Inicialização do Estado para o modo de Edição Inline
+# 🎯 NOVO: Inicialização do Estado para forçar a recarga
 if 'id_edicao_ativa_agenda' not in st.session_state:
     st.session_state['id_edicao_ativa_agenda'] = None
+    
+if 'needs_reload' not in st.session_state:
+    st.session_state['needs_reload'] = False
+
 
 # Conexão (Necessário para o CRUD e para verificar o status antes de prosseguir)
 spreadsheet = conectar_sheets_resource()
@@ -163,6 +171,7 @@ with st.sidebar:
     st.markdown("---")
     if st.button("Forçar Atualização Manual 🔄", help="Limpa o cache e busca os dados mais recentes do Google Sheets."):
         carregar_eventos.clear() 
+        st.session_state['needs_reload'] = True # Força a recarga no rerun
         st.success("✅ Cache limpo! Recarregando dados...") 
         st.rerun() 
     st.markdown("---")
@@ -170,8 +179,16 @@ with st.sidebar:
 
 
 # Carregamento de Dados (Cacheado)
-# 🎯 CORREÇÃO: Chamada sem o parâmetro 'spreadsheet' para evitar UnhashableParamError.
-df_eventos = carregar_eventos() 
+# 🎯 ATUALIZAÇÃO: Passando o estado de recarga forçada para anular o cache TTL se True
+should_reload = st.session_state['needs_reload']
+
+# Se should_reload for True, o Streamlit considera a chamada como nova e ignora o cache TTL.
+df_eventos = carregar_eventos(force_reload=should_reload) 
+
+# 🎯 ATUALIZAÇÃO: Resetar o estado de recarga forçada após a leitura (Cache Governança)
+if st.session_state['needs_reload']:
+    st.session_state['needs_reload'] = False
+
 
 # === SEÇÃO 1: CRIAR NOVO EVENTO ===
 st.header("📥 Registrar Novo Evento")
