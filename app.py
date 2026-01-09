@@ -45,7 +45,6 @@ def conectar_sheets_resource():
     return None
 
 # R (Read) - Lê todos os eventos com cache de 10 segundos
-# 🎯 ATUALIZAÇÃO: Adicionando 'force_reload' como argumento para governar o cache.
 @st.cache_data(ttl=10)
 def carregar_eventos(force_reload=False): 
     """Lê todos os registros (ignorando o cabeçalho) e retorna como DataFrame."""
@@ -94,11 +93,11 @@ def adicionar_evento(spreadsheet, dados_do_form):
         sheet.append_row(nova_linha, value_input_option='USER_ENTERED')
         st.success("🎉 Evento criado. **Recarregando dados...**")
         carregar_eventos.clear() # LIMPA O CACHE
-        st.session_state['needs_reload'] = True # 🎯 NOVO: Força a recarga na próxima execução
-        return True
+        st.session_state['needs_reload'] = True # Força a recarga na próxima execução
+        return True # Retorna True em caso de sucesso
     except Exception as e:
         st.error(f"Erro ao adicionar evento: {e}")
-        return False
+        return False # Retorna False em caso de falha
 
 # U (Update) - Atualiza um evento existente
 def atualizar_evento(spreadsheet, id_evento, novos_dados):
@@ -114,9 +113,8 @@ def atualizar_evento(spreadsheet, id_evento, novos_dados):
         sheet.update(f'A{linha_index}', [valores_atualizados], value_input_option='USER_ENTERED')
         st.success(f"🔄 Evento {id_evento[:8]}... atualizado. **Recarregando dados...**")
         carregar_eventos.clear() # LIMPA O CACHE
-        st.session_state['needs_reload'] = True # 🎯 NOVO: Força a recarga na próxima execução
+        st.session_state['needs_reload'] = True # Força a recarga na próxima execução
         return True
-
     except gspread.exceptions.CellNotFound:
         st.error(f"🚫 ID de Evento '{id_evento[:8]}...' não encontrado.")
         return False
@@ -135,7 +133,7 @@ def deletar_evento(spreadsheet, id_evento):
         sheet.delete_rows(linha_index)
         st.success(f"🗑️ Evento {id_evento[:8]}... deletado. **Recarregando dados...**")
         carregar_eventos.clear() # LIMPA O CACHE
-        st.session_state['needs_reload'] = True # 🎯 NOVO: Força a recarga na próxima execução
+        st.session_state['needs_reload'] = True # Força a recarga na próxima execução
         return True
     except gspread.exceptions.CellNotFound:
         st.error(f"🚫 ID de Evento '{id_evento[:8]}...' não encontrado.")
@@ -153,7 +151,7 @@ st.set_page_config(layout="wide", page_title="Agenda de Eventos")
 
 st.title("🗓️ **Agenda de Eventos** (Refatorada)")
 
-# 🎯 NOVO: Inicialização do Estado para forçar a recarga
+# Inicialização do Estado para forçar a recarga
 if 'id_edicao_ativa_agenda' not in st.session_state:
     st.session_state['id_edicao_ativa_agenda'] = None
     
@@ -179,13 +177,12 @@ with st.sidebar:
 
 
 # Carregamento de Dados (Cacheado)
-# 🎯 ATUALIZAÇÃO: Passando o estado de recarga forçada para anular o cache TTL se True
 should_reload = st.session_state['needs_reload']
 
-# Se should_reload for True, o Streamlit considera a chamada como nova e ignora o cache TTL.
+# Passa o estado para o carregar_eventos. Se True, força a recarga.
 df_eventos = carregar_eventos(force_reload=should_reload) 
 
-# 🎯 ATUALIZAÇÃO: Resetar o estado de recarga forçada após a leitura (Cache Governança)
+# Resetar o estado de recarga forçada após a leitura.
 if st.session_state['needs_reload']:
     st.session_state['needs_reload'] = False
 
@@ -221,8 +218,14 @@ with st.form("form_novo_evento", clear_on_submit=True):
                 'local': local,
                 'status': status_inicial if status_inicial != 'Rascunho' else 'Pendente' 
             }
-            adicionar_evento(spreadsheet, dados_para_sheet)
-            st.rerun() 
+            
+            # 🎯 CORREÇÃO DE FLUXO APLICADA AQUI:
+            # Garante que o rerun só acontece se a escrita foi um sucesso e o estado 'needs_reload' foi setado
+            sucesso = adicionar_evento(spreadsheet, dados_para_sheet)
+            
+            if sucesso:
+                st.rerun() 
+                 
         else:
             st.warning("O Título e a Data são obrigatórios. Não complique.")
             
