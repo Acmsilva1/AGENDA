@@ -54,8 +54,7 @@ def carregar_eventos(force_reload=False):
     if spreadsheet is None:
          return pd.DataFrame()
          
-    # 🎯 CORREÇÃO CRÍTICA: Removendo o bloco try/except daqui.
-    # Se a leitura falhar (ex: Permissão), o erro será lançado e exposto no app.
+    # A exceção é lançada e capturada no bloco try/except principal para diagnóstico
     sheet = spreadsheet.worksheet(ABA_NOME)
     dados = sheet.get_all_records(
          value_render_option='UNFORMATTED_VALUE', 
@@ -157,9 +156,28 @@ spreadsheet = conectar_sheets_resource()
 if spreadsheet is None:
     st.stop() 
 
-# --- BLOCO DE REFRESH MANUAL (Governança e UX) ---
+
+# --- BLOCO DE DEBUG (TEMPORÁRIO) ---
 with st.sidebar:
     st.markdown("---")
+    with st.expander("🛠️ Modo Debug da Leitura (Diagnóstico)", expanded=False):
+        try:
+            # Chama o Sheets diretamente, SEM CACHE, para ver o dado bruto
+            sheet_debug = spreadsheet.worksheet(ABA_NOME)
+            dados_brutos = sheet_debug.get_all_records(
+                 value_render_option='UNFORMATTED_VALUE', 
+                 head=1 
+            )
+            st.success("Dados brutos lidos (SEM CACHE):")
+            st.write(dados_brutos)
+            st.warning("Verifique se a lista acima está vazia ([]), ou se tem seus registros.")
+            
+        except Exception as e:
+            st.error("Falha ao tentar ler dados brutos.")
+            st.exception(e)
+    st.markdown("---")
+    
+    # --- BLOCO DE REFRESH MANUAL (Governança e UX) ---
     if st.button("Forçar Atualização Manual 🔄", help="Limpa o cache e busca os dados mais recentes do Google Sheets."):
         carregar_eventos.clear() 
         st.session_state['needs_reload'] = True # Força a recarga no rerun
@@ -172,9 +190,8 @@ with st.sidebar:
 # Carregamento de Dados (Cacheado)
 should_reload = st.session_state['needs_reload']
 
-# 🎯 NOVO BLOCO: Tenta carregar os dados e captura o erro, se houver
+# Tenta carregar os dados e captura o erro, se houver
 try:
-    # Chama a função, que agora vai lançar o erro se a leitura falhar
     df_eventos = carregar_eventos(force_reload=should_reload) 
 
     # Resetar o estado de recarga forçada após a leitura.
@@ -182,9 +199,9 @@ try:
         st.session_state['needs_reload'] = False
         
 except Exception as e:
-    st.error("🚨 ERRO CRÍTICO NA LEITURA DE DADOS:")
-    st.exception(e) # Exibe o traceback completo para diagnosticar a falha real (Ex: Permissão)
-    st.warning("O aplicativo parou de ler os dados do Sheets. Verifique a permissão de 'Leitor' da sua Conta de Serviço no Google Sheets.")
+    st.error("🚨 ERRO CRÍTICO NA LEITURA DE DADOS (Cheque o Debug na Sidebar):")
+    st.exception(e) # Exibe o traceback completo
+    st.warning("Provável causa: Falha de Permissão ou ID/Aba incorreta. Verifique suas credenciais no Sheets.")
     df_eventos = pd.DataFrame() # Garante que o app continue a rodar com dados vazios
     st.stop() # Para o app aqui, pois não há dados para exibir
 
