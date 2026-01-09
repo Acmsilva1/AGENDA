@@ -49,37 +49,30 @@ def conectar_sheets_resource():
 def carregar_eventos(force_reload=False): 
     """Lê todos os registros (ignorando o cabeçalho) e retorna como DataFrame."""
     
-    # O argumento force_reload (mesmo sem ser usado no corpo) altera o hash da função,
-    # forçando uma nova leitura se o valor for diferente da última execução.
-    
-    # Chamando o recurso cacheado internamente
     spreadsheet = conectar_sheets_resource() 
     
     if spreadsheet is None:
          return pd.DataFrame()
          
-    try:
-        sheet = spreadsheet.worksheet(ABA_NOME)
-        dados = sheet.get_all_records(
-             value_render_option='UNFORMATTED_VALUE', 
-             head=1 
+    # 🎯 CORREÇÃO CRÍTICA: Removendo o bloco try/except daqui.
+    # Se a leitura falhar (ex: Permissão), o erro será lançado e exposto no app.
+    sheet = spreadsheet.worksheet(ABA_NOME)
+    dados = sheet.get_all_records(
+         value_render_option='UNFORMATTED_VALUE', 
+         head=1 
+    )
+    df = pd.DataFrame(dados)
+    
+    # Correção e Padronização de Colunas para ordenação
+    if not df.empty and 'data_evento' in df.columns and 'hora_evento' in df.columns:
+        df['data_hora_ordenacao'] = pd.to_datetime(
+            df['data_evento'].astype(str) + ' ' + df['hora_evento'].astype(str),
+            errors='coerce'
         )
-        df = pd.DataFrame(dados)
-        
-        # Correção e Padronização de Colunas para ordenação
-        if not df.empty and 'data_evento' in df.columns and 'hora_evento' in df.columns:
-            df['data_hora_ordenacao'] = pd.to_datetime(
-                df['data_evento'].astype(str) + ' ' + df['hora_evento'].astype(str),
-                errors='coerce'
-            )
-            df = df.dropna(subset=['data_hora_ordenacao']).copy()
-            df['Ordem_Status'] = df['status'].map(STATUS_PRIORITY_MAP).fillna(99) 
-        
-        return df
-
-    except Exception as e:
-        st.error(f"Erro ao carregar dados: {e}")
-        return pd.DataFrame()
+        df = df.dropna(subset=['data_hora_ordenacao']).copy()
+        df['Ordem_Status'] = df['status'].map(STATUS_PRIORITY_MAP).fillna(99) 
+    
+    return df
 
 # C (Create) - Adiciona um novo evento
 def adicionar_evento(spreadsheet, dados_do_form):
@@ -94,10 +87,10 @@ def adicionar_evento(spreadsheet, dados_do_form):
         st.success("🎉 Evento criado. **Recarregando dados...**")
         carregar_eventos.clear() # LIMPA O CACHE
         st.session_state['needs_reload'] = True # Força a recarga na próxima execução
-        return True # Retorna True em caso de sucesso
+        return True
     except Exception as e:
         st.error(f"Erro ao adicionar evento: {e}")
-        return False # Retorna False em caso de falha
+        return False
 
 # U (Update) - Atualiza um evento existente
 def atualizar_evento(spreadsheet, id_evento, novos_dados):
@@ -179,12 +172,21 @@ with st.sidebar:
 # Carregamento de Dados (Cacheado)
 should_reload = st.session_state['needs_reload']
 
-# Passa o estado para o carregar_eventos. Se True, força a recarga.
-df_eventos = carregar_eventos(force_reload=should_reload) 
+# 🎯 NOVO BLOCO: Tenta carregar os dados e captura o erro, se houver
+try:
+    # Chama a função, que agora vai lançar o erro se a leitura falhar
+    df_eventos = carregar_eventos(force_reload=should_reload) 
 
-# Resetar o estado de recarga forçada após a leitura.
-if st.session_state['needs_reload']:
-    st.session_state['needs_reload'] = False
+    # Resetar o estado de recarga forçada após a leitura.
+    if st.session_state['needs_reload']:
+        st.session_state['needs_reload'] = False
+        
+except Exception as e:
+    st.error("🚨 ERRO CRÍTICO NA LEITURA DE DADOS:")
+    st.exception(e) # Exibe o traceback completo para diagnosticar a falha real (Ex: Permissão)
+    st.warning("O aplicativo parou de ler os dados do Sheets. Verifique a permissão de 'Leitor' da sua Conta de Serviço no Google Sheets.")
+    df_eventos = pd.DataFrame() # Garante que o app continue a rodar com dados vazios
+    st.stop() # Para o app aqui, pois não há dados para exibir
 
 
 # === SEÇÃO 1: CRIAR NOVO EVENTO ===
@@ -219,8 +221,7 @@ with st.form("form_novo_evento", clear_on_submit=True):
                 'status': status_inicial if status_inicial != 'Rascunho' else 'Pendente' 
             }
             
-            # 🎯 CORREÇÃO DE FLUXO APLICADA AQUI:
-            # Garante que o rerun só acontece se a escrita foi um sucesso e o estado 'needs_reload' foi setado
+            # Garante que o rerun só ocorre se a escrita foi bem-sucedida
             sucesso = adicionar_evento(spreadsheet, dados_para_sheet)
             
             if sucesso:
